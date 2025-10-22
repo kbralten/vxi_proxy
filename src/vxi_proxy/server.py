@@ -82,6 +82,8 @@ class AdapterFactory:
         self._config = config
         self._builders: Dict[str, Callable[[DeviceDefinition], DeviceAdapter]] = {
             "loopback": self._build_loopback,
+            "scpi-serial": self._build_scpi_serial,
+            "scpi_serial": self._build_scpi_serial,
         }
 
     def resolve(self, device_name: str) -> DeviceDefinition:
@@ -98,6 +100,12 @@ class AdapterFactory:
 
     def _build_loopback(self, definition: DeviceDefinition) -> DeviceAdapter:
         return LoopbackAdapter(definition.name)
+
+    def _build_scpi_serial(self, definition: DeviceDefinition) -> DeviceAdapter:
+        settings = dict(definition.settings)
+        # Lazy import to avoid requiring pyserial unless this adapter is used
+        from .adapters.scpi_serial import ScpiSerialAdapter  # type: ignore
+        return ScpiSerialAdapter(definition.name, **settings)
 
 
 class Vxi11CoreServer(rpc.TCPServer):
@@ -176,14 +184,32 @@ class Vxi11CoreServer(rpc.TCPServer):
         try:
             definition = self._adapter_factory.resolve(device_name)
             adapter = self._adapter_factory.build(definition)
+            # connect() is intentionally lightweight; opening serial ports is
+            # deferred until the adapter actually acquires the device lock.
             self._runtime.run(adapter.connect())
             link = self._runtime.run(self._links.create_link(device_name, adapter, client_id))
             link_id = link.lid
             if lock_device:
                 timeout_s = lock_timeout_ms / 1000 if lock_timeout_ms else None
                 try:
+                    # Acquire global resource lock first
                     self._runtime.run(self._resources.lock(device_name, link_id, timeout_s))
-                    link.has_lock = True
+                    # Now open the adapter (may raise AdapterError)
+                    try:
+                        self._runtime.run(adapter.acquire())
+                        link.has_lock = True
+                    except AdapterError:
+                        # Failed to open device; cleanup: release resource and destroy link
+                        try:
+                            self._runtime.run(self._resources.unlock(device_name, link_id))
+                        except Exception:
+                            LOGGER.exception("Failed to release resource after adapter acquire failure")
+                        try:
+                            self._runtime.run(self._links.destroy_link(link_id))
+                        except Exception:
+                            LOGGER.exception("Failed to destroy link after adapter acquire failure")
+                        link_id = 0
+                        error = vxi11_proto.ERR_OUT_OF_RESOURCES
                 except DeviceLockedError:
                     error = vxi11_proto.ERR_DEVICE_LOCKED_BY_ANOTHER_LINK
         except KeyError:
@@ -286,8 +312,19 @@ class Vxi11CoreServer(rpc.TCPServer):
         try:
             link = self._runtime.run(self._links.get(link_id))
             timeout_s = lock_timeout_ms / 1000 if lock_timeout_ms else None
+            # Acquire global resource lock
             self._runtime.run(self._resources.lock(link.device_name, link.lid, timeout_s))
-            link.has_lock = True
+            # Acquire adapter (open serial port) after global lock
+            try:
+                self._runtime.run(link.adapter.acquire())
+                link.has_lock = True
+            except AdapterError:
+                # Failed to open device; release global lock and report error
+                try:
+                    self._runtime.run(self._resources.unlock(link.device_name, link.lid))
+                except Exception:
+                    LOGGER.exception("Failed to release resource after adapter acquire failure")
+                raise
         except LinkNotFoundError:
             error = vxi11_proto.ERR_INVALID_LINK_IDENTIFIER
         except DeviceLockedError:
@@ -311,7 +348,13 @@ class Vxi11CoreServer(rpc.TCPServer):
             link = self._runtime.run(self._links.get(link_id))
             if not link.has_lock:
                 raise DeviceLockOwnershipError("Link does not hold lock")
+            # Release global resource lock
             self._runtime.run(self._resources.unlock(link.device_name, link.lid))
+            # Close adapter resources (run release inside the AsyncRuntime to safely touch asyncio primitives)
+            try:
+                self._runtime.run(self._async_adapter_release(link.adapter))
+            except Exception:
+                LOGGER.exception("Adapter release failed during device_unlock")
             link.has_lock = False
         except LinkNotFoundError:
             error = vxi11_proto.ERR_INVALID_LINK_IDENTIFIER
@@ -335,7 +378,13 @@ class Vxi11CoreServer(rpc.TCPServer):
         try:
             link = self._runtime.run(self._links.get(link_id))
             if link.has_lock:
+                # Force release global lock
                 self._runtime.run(self._resources.force_unlock(link.device_name))
+                # Release adapter resources
+                try:
+                    self._runtime.run(self._async_adapter_release(link.adapter))
+                except Exception:
+                    LOGGER.exception("Adapter release failed during destroy_link")
             self._runtime.run(self._links.destroy_link(link_id))
         except LinkNotFoundError:
             error = vxi11_proto.ERR_INVALID_LINK_IDENTIFIER
@@ -380,6 +429,14 @@ class Vxi11CoreServer(rpc.TCPServer):
     def _handle_not_supported(self) -> None:
         self.turn_around()
         self.packer.pack_device_error(vxi11_proto.ERR_OPERATION_NOT_SUPPORTED)
+
+    async def _async_adapter_release(self, adapter: DeviceAdapter) -> None:
+        """Coroutine helper to call adapter.release() safely inside AsyncRuntime."""
+        try:
+            # adapter.release is synchronous in adapters; run in thread if it blocks
+            await asyncio.to_thread(adapter.release)
+        except Exception:
+            LOGGER.exception("Exception while releasing adapter")
 
     @staticmethod
     def _decode_device_name(raw: bytes | str) -> str:

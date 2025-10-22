@@ -6,4 +6,16 @@ devices:
   loopback0:
     type: loopback
 
+  # Example SCPI over serial device (uncomment and adjust as needed)
+  # dmm_serial:
+  #   type: scpi-serial
+  #   port: COM3           # e.g., COM3 on Windows or /dev/ttyUSB0 on Linux
+  #   baudrate: 9600
+  #   bytesize: 8          # one of 5,6,7,8
+  #   parity: N            # one of N,E,O,M,S
+  #   stopbits: 1          # 1, 1.5, or 2
+  #   timeout: 1.0         # seconds
+  #   write_termination: "\n"   # or CR, LF, CRLF
+  #   read_termination: "\n"    # or CR, LF, CRLF
+
 mappings: {}

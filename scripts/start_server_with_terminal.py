@@ -34,7 +34,9 @@ def _wait_for_server(host: str, port: int, timeout: float = 5.0) -> None:
 
 
 def main() -> int:
-    config_path = PROJECT_ROOT / "config.example.yaml"
+    config_path = PROJECT_ROOT / "config.yaml"
+    if not config_path.exists():
+        config_path = PROJECT_ROOT / "config.example.yaml"
     facade = Vxi11ServerFacade(config_path)
     ctx = facade.start()
     worker = threading.Thread(target=ctx.server.loop, daemon=True)

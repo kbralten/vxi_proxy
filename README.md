@@ -185,6 +185,10 @@ mappings:
 
     -   For example, to connect to the `dmm_main` configured above on a gateway running at `192.168.1.200`, the VISA resource string would be `TCPIP::192.168.1.200::dmm_main::INSTR`.
 
+5.  **Testing Without Hardware**:
+
+    -   Use the included mock SCPI instrument simulator to test the gateway without physical instruments. See `tools/README.md` for detailed setup instructions with virtual serial port pairs (com0com on Windows, socat on Linux).
+
 6\. Configuration GUI
 ---------------------
 

@@ -125,6 +125,37 @@ The SCPI adapter is the most straightforward to implement.
 -   **Response Handling:** The `read()` method reads the ASCII-formatted response from the instrument until a termination character is received. This response is then buffered for the next VXI-11 `device_read` call.
 
 -   **Error Management:** The adapter is responsible for catching TCP/IP connection errors and parsing standard SCPI error queue messages, translating them into a format the Core Engine can understand.
+ 
+### 3.2.1 Adapter lifecycle and resource locking
+
+Adapters that manage shared, physical resources (for example: serial ports, USBTMC devices, or other exclusive-access transports) must follow a small lifecycle contract so the gateway can safely arbitrate those resources across multiple VXI-11 links and clients.
+
+#### Contract (recommended implementation):
+
+- connect()/disconnect(): lightweight setup/teardown only. These should not open or hold the physical device. Use them to validate configuration and allocate in-memory structures.
+- acquire(): open the physical resource and prepare the adapter for I/O. The server will call this immediately after the ResourceManager grants an exclusive lock for the device. acquire() may perform blocking I/O to open the device; if so, run that work in a thread (e.g., asyncio.to_thread) or ensure it is awaited in the server's async runtime. On failure, acquire() should raise so the server can undo the lock and report an error to the client.
+- release(): close the physical resource and free any associated state. The server will call this when the ResourceManager releases the lock (device_unlock or implicit unlock on destroy_link). release() must be safe to call even if the resource is already closed.
+- read()/write(): these operations assume the adapter currently holds the resource (acquire() has succeeded). If called without an open connection, they should return an error indicating no lock/connection.
+
+#### Why this model?
+
+- It lets create_link be a lightweight operation that does not touch hardware. Links can be established and enumerated even if the physical device is temporarily unavailable.
+- It confines the window during which a device is open to the explicit lock period. This reduces contention and the risk of leaving ports open between uses.
+- It matches the VXI-11 semantics: clients explicitly request exclusive access (device_lock), and that is the moment the gateway should open and hand over the device to the caller.
+
+#### Server responsibilities and implementation notes:
+
+- The Core Engine / VXI-11 server should call adapter.acquire() immediately after ResourceManager.lock succeeds for the device. If adapter.acquire() fails, the server should release the ResourceManager lock and return an appropriate VXI-11 error code to the client.
+- The server should call adapter.release() when the ResourceManager releases the lock (device_unlock or when destroying a link that holds a lock). Because releasing hardware may involve blocking cleanup, run release() in the AsyncRuntime (or via asyncio.to_thread) so the RPC handler stays responsive.
+- For adapters that use blocking libraries (for example, pyserial), perform I/O (open/read/write/close) on worker threads rather than blocking the event loop.
+
+#### Testing and edge cases:
+
+- Unit-test adapters using a fake or virtual device to verify acquire()/release() open/close semantics.
+- Test behavior when acquire() raises (server must unlock and surface an error). Test that release() is idempotent.
+- Consider timeouts: if acquire() takes too long, the server should enforce a sensible lock-acquisition timeout and report failure.
+
+These guidelines should be followed by any adapter that controls exclusive-access hardware to avoid resource leaks and to make the gateway predictable under concurrent use.
 
 ### 3.3 MODBUS Device Adapters (RTU, ASCII, and TCP)
 
