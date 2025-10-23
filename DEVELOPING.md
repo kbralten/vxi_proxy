@@ -584,6 +584,31 @@ This roadmap outlines a detailed, milestone-based approach to developing the pro
 
         -   Write integration tests that connect to the gateway via VXI-11, target a configured mock SCPI device, and verify that commands are passed through and responses are returned correctly.
 
+        -   Notes / defaults for `scpi-tcp` adapter:
+
+          - `requires_lock`: defaults to `false` (TCP devices allow concurrent clients by default; can be overridden per-device in YAML).
+          - `read_termination`: preserved in returned payload (same behavior as `scpi-serial`).
+          - `reconnect_on_error`: defaults to `false` (adapter will raise AdapterError on socket errors; reconnect is explicit).
+          - Example YAML entry:
+
+            ```yaml
+            devices:
+              dmm_tcp:
+              type: scpi-tcp
+              host: 127.0.0.1
+              port: 5555
+              io_timeout: 1.0
+              write_termination: "\n"
+              read_termination: "\n"
+            ```
+
+          - Mock server script: `tools/mock_scpi_tcp_server.py` (asyncio); run for manual testing:
+
+            ```powershell
+            # start mock on default port 5555
+            .\.venv\Scripts\python.exe -u tools/mock_scpi_tcp_server.py --host 127.0.0.1 --port 5555
+            ```
+
 -   **Milestone 5: USBTMC Adapter and Integration**
 
     -   **Objective:** Enable control of locally connected USBTMC instruments.

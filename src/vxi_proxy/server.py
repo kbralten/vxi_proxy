@@ -84,6 +84,8 @@ class AdapterFactory:
             "loopback": self._build_loopback,
             "scpi-serial": self._build_scpi_serial,
             "scpi_serial": self._build_scpi_serial,
+            "scpi-tcp": self._build_scpi_tcp,
+            "scpi_tcp": self._build_scpi_tcp,
         }
 
     def resolve(self, device_name: str) -> DeviceDefinition:
@@ -106,6 +108,12 @@ class AdapterFactory:
         # Lazy import to avoid requiring pyserial unless this adapter is used
         from .adapters.scpi_serial import ScpiSerialAdapter  # type: ignore
         return ScpiSerialAdapter(definition.name, **settings)
+
+    def _build_scpi_tcp(self, definition: DeviceDefinition) -> DeviceAdapter:
+        settings = dict(definition.settings)
+        from .adapters.scpi_tcp import ScpiTcpAdapter  # type: ignore
+
+        return ScpiTcpAdapter(definition.name, **settings)
 
 
 class Vxi11CoreServer(rpc.TCPServer):
