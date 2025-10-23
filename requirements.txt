@@ -1,3 +1,5 @@
 python-vxi11>=0.9
 PyYAML>=6.0
 pyserial>=3.5
+pyusb>=1.2.1
+python-usbtmc>=0.8

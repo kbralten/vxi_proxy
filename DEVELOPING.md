@@ -625,6 +625,47 @@ This roadmap outlines a detailed, milestone-based approach to developing the pro
 
         -   Write integration tests to verify that the gateway can successfully proxy commands to a USBTMC device.
 
+        -   Notes / defaults for `usbtmc` adapter:
+
+          - `requires_lock`: defaults to `true` (USBTMC devices require exclusive access).
+          - `read_termination`: preserved in returned payload (same behavior as `scpi-serial`).
+          - Device discovery: uses `python-usbtmc.Instrument(idVendor, idProduct, iSerial)` to open by VID/PID/serial.
+          - Example YAML entry:
+
+            ```yaml
+            devices:
+              my_scope:
+                type: usbtmc
+                vid: 0x0957
+                pid: 0x1755
+                serial: "MY12345678"  # optional
+                timeout: 1.0
+                write_termination: "\n"
+                read_termination: "\n"
+            ```
+
+          - System requirements:
+            - Linux: libusb-1.0 installed; udev rules for device access (e.g., `/etc/udev/rules.d/99-usbtmc.rules`):
+              ```
+              # Example udev rule for Agilent/Keysight devices
+              SUBSYSTEM=="usb", ATTR{idVendor}=="0957", MODE="0664", GROUP="plugdev"
+              ```
+            - Windows: WinUSB or libusbK driver (install via Zadig: https://zadig.akeo.ie/).
+            - macOS: libusb via Homebrew (`brew install libusb`).
+
+          - Integration test (gated by environment variables):
+
+            ```powershell
+            # Set environment variables for physical device
+            $env:HAVE_USBTMC_DEVICE="1"
+            $env:DEVICE_VID="0x0957"
+            $env:DEVICE_PID="0x1755"
+            $env:DEVICE_SERIAL="MY12345678"  # optional
+
+            # Run integration test
+            .\.venv\Scripts\python.exe -u -m unittest tests.integration.test_usbtmc_integration -v
+            ```
+
 -   **Milestone 6: MODBUS Core Logic and TCP Adapter**
 
     -   **Objective:** Implement the core translation engine and support for MODBUS TCP devices.
