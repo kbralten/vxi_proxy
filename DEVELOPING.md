@@ -682,6 +682,96 @@ This roadmap outlines a detailed, milestone-based approach to developing the pro
 
         -   Write integration tests: configure a mock MODBUS TCP device with a set of command mappings, connect via VXI-11, send mapped commands, and verify that the correct MODBUS transactions occur and that the responses are translated back correctly.
 
+    -   **Implementation notes:**
+
+        -   Notes / defaults for `modbus-tcp` adapter:
+
+            - `requires_lock`: defaults to `false` (MODBUS TCP servers can multiplex connections).
+            - `unit_id`: MODBUS unit identifier (default `1`).
+            - `timeout`: Socket timeout in seconds (default `5.0`).
+            - `mappings`: List of mapping rules (pattern → MODBUS action).
+
+        -   Mapping engine (`src/vxi_proxy/mapping_engine.py`):
+
+            - `ModbusAction` dataclass: represents a translated MODBUS operation with `function_code`, `address`, `count`, `values` (for writes), and `data_type`.
+            - `translate_command(command, rules)`: matches command against patterns, extracts parameters, returns `ModbusAction`.
+            - Pattern matching: uses regex with `re.IGNORECASE`, supports capture groups (e.g., `$1`, `$2`).
+            - Supported actions: `read_holding_registers`, `read_input_registers`, `write_single_register`, `write_holding_registers`, `read_coils`, `read_discrete_inputs`, `write_single_coil`, `write_multiple_coils`.
+            - Data types: `uint16`, `int16`, `uint32_be`, `uint32_le`, `float32_be`, `float32_le`, `bool`.
+            - Error handling: raises `MappingError` for unmapped commands, unknown actions, invalid parameters.
+
+        -   MODBUS-TCP protocol details:
+
+            - MBAP header (7 bytes): `transaction_id (2) | protocol_id (2) | length (2) | unit_id (1)`.
+            - Function codes: `0x03` (read holding), `0x04` (read input), `0x06` (write single), `0x10` (write multiple), etc.
+            - Exception responses: `function_code >= 0x80` indicates MODBUS exception.
+            - Endianness: big-endian for network transmission (`struct.pack(">..."`).
+
+        -   Example YAML entry with mappings:
+
+            ```yaml
+            devices:
+              modbus_plc:
+                type: modbus-tcp
+                host: 192.168.1.100
+                port: 502
+                unit_id: 1
+                timeout: 2.0
+                requires_lock: false
+                mappings:
+                  # Read temperature from holding registers 40001-40002 (address 0-1)
+                  - pattern: 'MEAS:TEMP\?'
+                    action: read_holding_registers
+                    params:
+                      address: 0
+                      count: 2
+                      data_type: float32_be
+                  
+                  # Write setpoint to holding registers 40101-40102 (address 100-101)
+                  - pattern: 'SOUR:TEMP\s+(\d+\.?\d*)'
+                    action: write_holding_registers
+                    params:
+                      address: 100
+                      value: '$1'
+                      data_type: float32_be
+                  
+                  # Read voltage from input registers 30001-30002 (address 0-1)
+                  - pattern: 'MEAS:VOLT\?'
+                    action: read_input_registers
+                    params:
+                      address: 0
+                      count: 2
+                      data_type: uint32_be
+                  
+                  # Write single register with uint16 value
+                  - pattern: 'SOUR:MODE\s+(\d+)'
+                    action: write_single_register
+                    params:
+                      address: 200
+                      value: '$1'
+                      data_type: uint16
+            ```
+
+        -   Mock MODBUS server (for testing):
+
+            ```powershell
+            # Start mock server on port 5020
+            python tools\mock_modbus_server.py --host 127.0.0.1 --port 5020 --verbose
+            ```
+
+            Mock server datastore layout:
+            - Holding registers 40001-40002 (address 0-1): temperature = 25.5°C (float32_be)
+            - Holding registers 40101-40102 (address 100-101): setpoint = 20.0°C (float32_be)
+            - Input registers 30001-30002 (address 0-1): voltage = 12345 (uint32_be)
+
+        -   Integration test (gated by environment variable):
+
+            ```powershell
+            # Run MODBUS integration test
+            $env:MODBUS_INTEGRATION_TEST="1"
+            python -m unittest tests.integration.test_modbus_tcp_integration
+            ```
+
 -   **Milestone 7: MODBUS Serial Adapters (RTU & ASCII)**
 
     -   **Objective:** Add support for serial-based MODBUS devices and handle shared bus access.

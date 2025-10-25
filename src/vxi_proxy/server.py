@@ -87,6 +87,8 @@ class AdapterFactory:
             "scpi-tcp": self._build_scpi_tcp,
             "scpi_tcp": self._build_scpi_tcp,
             "usbtmc": self._build_usbtmc,
+            "modbus-tcp": self._build_modbus_tcp,
+            "modbus_tcp": self._build_modbus_tcp,
         }
 
     def resolve(self, device_name: str) -> DeviceDefinition:
@@ -121,6 +123,12 @@ class AdapterFactory:
         from .adapters.usbtmc import UsbTmcAdapter  # type: ignore
 
         return UsbTmcAdapter(definition.name, **settings)
+
+    def _build_modbus_tcp(self, definition: DeviceDefinition) -> DeviceAdapter:
+        settings = dict(definition.settings)
+        from .adapters.modbus_tcp import ModbusTcpAdapter  # type: ignore
+
+        return ModbusTcpAdapter(definition.name, **settings)
 
 
 class Vxi11CoreServer(rpc.TCPServer):
