@@ -1,12 +1,7 @@
 """Backend adapter implementations."""
 
-from .base import DeviceAdapter, AdapterError
+from .base import AdapterError, DeviceAdapter
+from .generic_regex import GenericRegexAdapter
 from .loopback import LoopbackAdapter
 
-__all__ = [
-	"DeviceAdapter",
-	"AdapterError",
-	"LoopbackAdapter",
-]
-
-__all__ = ["DeviceAdapter", "AdapterError", "LoopbackAdapter"]
+__all__ = ["DeviceAdapter", "AdapterError", "LoopbackAdapter", "GenericRegexAdapter"]

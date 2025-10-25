@@ -10,6 +10,8 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Coroutine, Dict, Optional, TypeVar
+import socket
+import time
 
 from vxi11 import rpc
 from vxi11 import vxi11 as vxi11_proto
@@ -89,6 +91,8 @@ class AdapterFactory:
             "usbtmc": self._build_usbtmc,
             "modbus-tcp": self._build_modbus_tcp,
             "modbus_tcp": self._build_modbus_tcp,
+            "generic-regex": self._build_generic_regex,
+            "generic_regex": self._build_generic_regex,
         }
 
     def resolve(self, device_name: str) -> DeviceDefinition:
@@ -129,6 +133,12 @@ class AdapterFactory:
         from .adapters.modbus_tcp import ModbusTcpAdapter  # type: ignore
 
         return ModbusTcpAdapter(definition.name, **settings)
+
+    def _build_generic_regex(self, definition: DeviceDefinition) -> DeviceAdapter:
+        settings = dict(definition.settings)
+        from .adapters.generic_regex import GenericRegexAdapter  # type: ignore
+
+        return GenericRegexAdapter(definition.name, **settings)
 
 
 class Vxi11CoreServer(rpc.TCPServer):
@@ -246,6 +256,7 @@ class Vxi11CoreServer(rpc.TCPServer):
             error = vxi11_proto.ERR_OUT_OF_RESOURCES
 
         self.turn_around()
+        LOGGER.debug("create_link response: error=%s link_id=%s", error, link_id)
         self.packer.pack_create_link_resp((error, link_id, 0, self._max_recv_size))
 
     def handle_11(self) -> None:
@@ -270,7 +281,22 @@ class Vxi11CoreServer(rpc.TCPServer):
             link = self._runtime.run(self._links.get(link_id))
             if getattr(link.adapter, "requires_lock", False) and not link.has_lock:
                 raise DeviceLockOwnershipError("Lock required for device access")
-            bytes_written = self._runtime.run(link.adapter.write(data))
+            # Respect the client-supplied timeout_ms for the device_write call.
+            # If timeout_ms is non-zero, run the adapter write under asyncio.wait_for
+            # so that we return ERR_IO_TIMEOUT to the client when exceeded.
+            if timeout_ms:
+                rpc_timeout_s = timeout_ms / 1000.0
+                wait_timeout_s = max(0.001, rpc_timeout_s)
+                LOGGER.debug(
+                    "device_write: rpc timeout_ms=%s -> wait_for timeout=%s",
+                    timeout_ms,
+                    wait_timeout_s,
+                )
+                bytes_written = self._runtime.run(
+                    asyncio.wait_for(link.adapter.write(data), wait_timeout_s)
+                )
+            else:
+                bytes_written = self._runtime.run(link.adapter.write(data))
         except LinkNotFoundError:
             error = vxi11_proto.ERR_INVALID_LINK_IDENTIFIER
         except DeviceLockOwnershipError:
@@ -305,7 +331,20 @@ class Vxi11CoreServer(rpc.TCPServer):
             link = self._runtime.run(self._links.get(link_id))
             if getattr(link.adapter, "requires_lock", False) and not link.has_lock:
                 raise DeviceLockOwnershipError("Lock required for device access")
-            payload = self._runtime.run(link.adapter.read(request_size))
+            # Respect client-supplied timeout_ms for device_read as well.
+            if timeout_ms:
+                rpc_timeout_s = timeout_ms / 1000.0
+                wait_timeout_s = max(0.001, rpc_timeout_s)
+                LOGGER.debug(
+                    "device_read: rpc timeout_ms=%s -> wait_for timeout=%s",
+                    timeout_ms,
+                    wait_timeout_s,
+                )
+                payload = self._runtime.run(
+                    asyncio.wait_for(link.adapter.read(request_size), wait_timeout_s)
+                )
+            else:
+                payload = self._runtime.run(link.adapter.read(request_size))
             if not payload:
                 reason = 0
         except LinkNotFoundError:
@@ -490,6 +529,10 @@ class Vxi11ServerFacade:
     def start(self) -> ServerContext:
         """Start the façade and return context with server references."""
 
+        # Ensure logging is configured so adapter/server errors are visible in tests
+        if not logging.getLogger().handlers:
+            logging.basicConfig(level=logging.DEBUG, format="[%(asctime)s] %(levelname)s %(message)s")
+
         self._runtime.start()
         server = Vxi11CoreServer(
             host=self._config.server.host,
@@ -508,10 +551,34 @@ class Vxi11ServerFacade:
                     "Portmapper registration failed; continuing with direct TCP access only",
                     exc_info=True,
                 )
+        # Save reference
         self._server = server
-        LOGGER.info(
-            "VXI-11 core service listening on %s:%s", server.host, server.port
-        )
+
+        # Start the server.loop in a background thread so callers receive a
+        # server that is actively accepting connections. Historically tests
+        # started the loop manually; starting it here simplifies readiness.
+        worker = threading.Thread(target=server.loop, daemon=True)
+        worker.start()
+
+        # Wait until the server is accepting connections. The server may bind
+        # to 0.0.0.0; prefer a loopback address for probing.
+        probe_host = server.host if server.host not in ("0.0.0.0", "") else "127.0.0.1"
+        probe_port = server.port
+
+        deadline = time.time() + 5.0
+        last_exc: Optional[Exception] = None
+        while time.time() < deadline:
+            try:
+                with socket.create_connection((probe_host, probe_port), timeout=0.5):
+                    break
+            except Exception as exc:  # pragma: no cover - network flakiness possible
+                last_exc = exc
+                time.sleep(0.05)
+
+        if time.time() >= deadline:
+            LOGGER.warning("VXI-11 server did not become ready within timeout: %s", last_exc)
+
+        LOGGER.info("VXI-11 core service listening on %s:%s", server.host, server.port)
         return ServerContext(config_path=self._config_path, server=server, runtime=self._runtime)
 
     def serve_forever(self) -> None:

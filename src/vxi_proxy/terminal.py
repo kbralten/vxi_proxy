@@ -55,13 +55,14 @@ class Vxi11Terminal:
         auto_read: bool = True,
         append_newline: bool = True,
         read_size: int = 4096,
-        io_timeout: float = 2.0,
+        io_timeout: float = 5.0,
     ) -> None:
         self._auto_read = auto_read
         self._append_newline = append_newline
         self._read_size = max(1, read_size)
         self._io_timeout_ms = max(0, int(io_timeout * 1000))
-        self._socket_timeout = max(0.1, io_timeout)
+        headroom = max(0.1, io_timeout * 0.1)
+        self._socket_timeout = max(0.1, io_timeout + headroom)
         self._client: Optional[vxi11_proto.CoreClient] = None
         self._connection: Optional[ConnectionInfo] = None
         self._has_lock = False

@@ -772,7 +772,111 @@ This roadmap outlines a detailed, milestone-based approach to developing the pro
             python -m unittest tests.integration.test_modbus_tcp_integration
             ```
 
--   **Milestone 7: MODBUS Serial Adapters (RTU & ASCII)**
+      -   **Milestone 7: Generic Regex-Based Protocol Adapter**
+
+        -   **Objective:** Implement a highly flexible adapter for custom, non-standard,
+          ASCII-based protocols using a configurable, regex-driven translation engine.
+
+        -   **Sub-tasks:**
+
+          -   Design and document an extended configuration schema for the `generic-regex` device type. Each command mapping must allow these fields:
+
+            -   `request_format`: a template for constructing the request message sent to the device (supports capture group substitutions like `$1`, `$name`).
+            -   `expects_response`: boolean flag indicating whether a reply is expected.
+            -   `response_regex`: regular expression (with named capture groups) used to parse the device reply when `expects_response: true`.
+            -   `response_format`: a template for building the ASCII string returned to the VXI-11 client from the parsed captures.
+
+          -   Develop the `GenericRegex` adapter (`src/vxi_proxy/adapters/generic_regex.py`), inheriting from `DeviceAdapter`, that supports both TCP and serial transports (driven by device settings). The adapter must:
+            -   Match incoming ASCII commands against the configured rules in order.
+            -   Build the outgoing message using `request_format` and regex capture substitutions.
+            -   Send the message over the configured transport (TCP socket or serial port).
+            -   If `expects_response` is true: read the reply, parse it with `response_regex`, and format the final result using `response_format` into the adapter's read buffer.
+            -   If `expects_response` is false: send and return immediately (clearing any pending response buffer).
+
+          -   Implement thorough validation and helpful error messages for malformed rules (missing `request_format` or `response_regex` when required, invalid regex, missing named groups used in `response_format`, etc.).
+
+          -   Develop a mock instrument server (TCP and/or virtual serial flavour) under `tools/mock_generic_protocol.py` to exercise both commands that reply and commands that do not. The mock should be configurable to demonstrate parsing named captures and to intentionally emit malformed replies for negative tests.
+
+          -   Write unit tests for the adapter's translation core (parsing, template substitution, conditional response handling) and integration tests that run the mock instrument and verify real end-to-end behaviour from VXI-11 through the adapter to the mock device.
+
+        -   **Configuration schema example (YAML)**
+
+          ```yaml
+          devices:
+            my_custom:
+            type: generic-regex
+            transport: tcp        # or 'serial'
+            host: 192.168.1.50    # if tcp
+            port: 9000            # if tcp
+            serial_port: COM3     # if serial
+            baudrate: 9600        # if serial
+            io_timeout: 2.0
+            mappings:
+              - pattern: '^STAT\s*$'
+              request_format: 'STATUS\n'
+              expects_response: true
+              response_regex: '^OK\s+TEMP=(?P<temp>\d+\.\d+)\s+V=(?P<volt>\d+)$'
+              response_format: 'TEMP=$temp\nVOLT=$volt\n'
+
+              - pattern: '^SET:MODE\s+(\w+)$'
+              request_format: 'MODE $1\n'
+              expects_response: false
+              # no response_regex/response_format needed when expects_response=false
+          ```
+
+        Terminator / prompt support
+        ---------------------------
+
+        Some instruments do not terminate replies with a newline. Instead they use
+        a prompt or terminator character (for example `>`). The `generic-regex`
+        adapter supports an optional per-rule `terminator` string which tells the
+        adapter to read until that sequence is observed before attempting to parse
+        the payload with `response_regex`.
+
+        - Default behaviour (no `terminator` set) preserves the previous behaviour
+          of stripping CR/LF and attempting to match the entire payload.
+        - When `terminator` is provided (for example `">"`), the adapter will
+          wait until the terminator appears in the incoming byte stream, then
+          extract the payload up to the terminator, strip CR/LF, and run the
+          `response_regex` against that payload.
+
+        Example (device that replies with a prompt `>`):
+
+        ```yaml
+        mappings:
+          - pattern: '^GETVAL$'
+            request_format: 'READ\n'
+            expects_response: true
+            terminator: '>'
+            response_regex: '^VALUE:(?P<val>\d+)$'
+            response_format: 'VAL=$val\n'
+        ```
+
+        Recommendations
+        ---------------
+
+        - Use `terminator: "\n"` (or omit the field) for conventional line-terminated
+          instruments.
+        - For prompt-based devices set `terminator` to the prompt character or
+          sequence (commonly `>`). This reduces timing-sensitive read behaviour
+          and makes the adapter robust to devices that omit trailing newlines.
+        - Keep `io_timeout` as an overall safety deadline; `terminator` only affects
+          when the adapter attempts pattern matching, not the global timeout for
+          the operation.
+
+        -   **Testing guidance:**
+
+          -   Unit-test the template substitution and regex parsing logic independently.
+          -   Integration tests should start the `tools/mock_generic_protocol.py` server, point a `generic-regex` device at it, and run round-trip VXI-11 `device_write` / `device_read` sequences for both response-expected and fire-and-forget commands.
+          -   Gate longer-running integration tests behind an environment variable (e.g., `GENERIC_PROTOCOL_INTEGRATION=1`).
+
+        -   **Notes / defaults:**
+
+          -   `requires_lock` should be configurable per-device. For TCP transports, default to `false`.
+          -   `io_timeout` controls how long the adapter waits for replies when `expects_response` is true.
+
+
+-   **Milestone 8: MODBUS Serial Adapters (RTU & ASCII)**
 
     -   **Objective:** Add support for serial-based MODBUS devices and handle shared bus access.
 
@@ -788,7 +892,7 @@ This roadmap outlines a detailed, milestone-based approach to developing the pro
 
         -   Write integration tests for both RTU and ASCII adapters, specifically including scenarios where multiple VXI-11 clients attempt to access different slave devices on the same shared serial port to validate the arbitration logic.
 
--   **Milestone 8: Hardening, Deployment, and Documentation**
+-   **Milestone 9: Hardening, Deployment, and Documentation**
 
     -   **Objective:** Prepare the application for production use.
 
