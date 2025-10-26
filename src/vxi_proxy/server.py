@@ -91,6 +91,10 @@ class AdapterFactory:
             "usbtmc": self._build_usbtmc,
             "modbus-tcp": self._build_modbus_tcp,
             "modbus_tcp": self._build_modbus_tcp,
+            "modbus-rtu": self._build_modbus_rtu,
+            "modbus_rtu": self._build_modbus_rtu,
+            "modbus-ascii": self._build_modbus_ascii,
+            "modbus_ascii": self._build_modbus_ascii,
             "generic-regex": self._build_generic_regex,
             "generic_regex": self._build_generic_regex,
         }
@@ -133,6 +137,18 @@ class AdapterFactory:
         from .adapters.modbus_tcp import ModbusTcpAdapter  # type: ignore
 
         return ModbusTcpAdapter(definition.name, **settings)
+
+    def _build_modbus_rtu(self, definition: DeviceDefinition) -> DeviceAdapter:
+        settings = dict(definition.settings)
+        from .adapters.modbus_rtu import ModbusRtuAdapter  # type: ignore
+
+        return ModbusRtuAdapter(definition.name, **settings)
+
+    def _build_modbus_ascii(self, definition: DeviceDefinition) -> DeviceAdapter:
+        settings = dict(definition.settings)
+        from .adapters.modbus_ascii import ModbusAsciiAdapter  # type: ignore
+
+        return ModbusAsciiAdapter(definition.name, **settings)
 
     def _build_generic_regex(self, definition: DeviceDefinition) -> DeviceAdapter:
         settings = dict(definition.settings)
