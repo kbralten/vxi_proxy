@@ -16,7 +16,6 @@ import argparse
 import sys
 import traceback
 from pathlib import Path
-from typing import Optional
 
 # Allow running from checkout without installing the package by adding src/
 # to sys.path when present (developer-friendly behavior).
@@ -59,7 +58,7 @@ def main() -> int:
 
     # Load initial config (best-effort)
     try:
-        initial_cfg = load_config(args.config)
+        load_config(args.config)
     except Exception as exc:  # pragma: no cover - bubble helpful message
         print(f"Failed to load configuration {args.config}: {exc}", file=sys.stderr)
         traceback.print_exc()
