@@ -24,7 +24,7 @@ SRC = ROOT / "src"
 if SRC.is_dir() and str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from vxi_proxy.config import config_to_dict, load_config, save_config
+from vxi_proxy.config import config_to_dict, load_config, save_config, ConfigurationError
 from vxi_proxy.gui_server import ConfigGuiServer
 
 
@@ -46,6 +46,28 @@ def maybe_override_server_host(config_path: Path, host: str, enabled: bool) -> N
     save_config(config_path, raw)
 
 
+def ensure_default_config(config_path: Path) -> None:
+    """Create a minimal default config if none exists yet.
+
+    The default binds the facade and GUI to 0.0.0.0 and exposes empty devices/mappings.
+    """
+    if config_path.exists():
+        return
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    default_raw = {
+        "server": {
+            "host": "0.0.0.0",
+            "port": 1024,
+            "portmapper_enabled": False,
+            "gui": {"enabled": True, "host": "0.0.0.0", "port": 8080},
+        },
+        "devices": {},
+        "mappings": {},
+    }
+    # save_config validates the structure before writing
+    save_config(config_path, default_raw)
+
+
 def main() -> int:
     config_path = Path(os.getenv("CONFIG_PATH", "/app/config.yaml"))
     gui_host = os.getenv("GUI_HOST", "0.0.0.0")
@@ -57,6 +79,13 @@ def main() -> int:
     disable_facade = os.getenv("DISABLE_FACADE") == "1"
     override_host_enabled = os.getenv("DISABLE_SERVER_HOST_OVERRIDE") != "1"
     server_host_override = os.getenv("SERVER_HOST_OVERRIDE", "0.0.0.0")
+
+    # Ensure a config file exists to avoid boot failures in fresh images
+    try:
+        ensure_default_config(config_path)
+    except ConfigurationError as exc:
+        print(f"[entrypoint] Failed to write default config: {exc}", file=sys.stderr)
+        return 1
 
     # Apply host override to bind the facade publicly inside the container
     try:

@@ -14,7 +14,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code and default config
 COPY src ./src
 COPY scripts ./scripts
-COPY config.yaml ./config.yaml
 
 # Expose GUI and default facade port; adjust as needed via config.yaml
 EXPOSE 8080 1024
