@@ -204,6 +204,45 @@ The GUI allows you to:
 
 -   Save changes and reload the gateway service with a single click.
 
+8\. Docker image
+-----------------
+
+This repository includes a small Dockerfile and an entrypoint script that start the configuration GUI and (if available) the VXI-11 facade inside a container. The container is useful for running the gateway in an isolated environment or on CI.
+
+Build the image:
+
+```powershell
+docker build -t vxi-proxy:gui .
+```
+
+Run the container (GUI + facade, ports published):
+
+```powershell
+docker run --rm -p 8080:8080 -p 1024:1024 vxi-proxy:gui
+```
+
+Mount your local config (recommended for development):
+
+```powershell
+docker run --rm -p 8080:8080 -p 1024:1024 \
+  -v ${PWD}/config.yaml:/app/config.yaml \
+  vxi-proxy:gui
+```
+
+Environment variables supported by the entrypoint:
+
+- `CONFIG_PATH` — path to the YAML config inside the container (default `/app/config.yaml`).
+- `GUI_HOST` / `GUI_PORT` — where the GUI binds inside the container (defaults `0.0.0.0:8080`).
+- `DISABLE_FACADE` — set to `1` to run the GUI only and skip starting the facade.
+- `SERVER_HOST_OVERRIDE` — entrypoint will set `server.host` to this value in the config before starting the facade (default `0.0.0.0`).
+- `DISABLE_SERVER_HOST_OVERRIDE` — set to `1` to disable the automatic override of `server.host`.
+
+Notes:
+
+- The entrypoint tries to import `Vxi11ServerFacade` from `vxi_proxy.server`. If your project exposes the facade under a different name/path, either update the entrypoint or run the container with `DISABLE_FACADE=1` and start the facade by other means.
+- The GUI is served from the container and will be reachable at `http://<host>:8080/` when you publish port 8080.
+- If your facade listens on a different port than the one configured in `config.yaml`, publish that port when running the container (for example `-p 1024:1024`).
+
 7\. License
 -----------
 
