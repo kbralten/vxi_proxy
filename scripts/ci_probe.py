@@ -71,7 +71,7 @@ def udp_getport(host: str, port: int, prog: int) -> int:
     s.sendto(build_getport_call(xid, prog), (host, port))
     data, _ = s.recvfrom(4096)
     up = Unpacker(data)
-    rxid = up.unpack_uint()
+    up.unpack_uint()
     _ = up.unpack_uint()
     _ = up.unpack_uint()  # reply, accepted
     _ = up.unpack_uint()
@@ -106,7 +106,7 @@ def tcp_getport(host: str, port: int, prog: int) -> int:
         to_read -= len(chunk)
     data = b''.join(chunks)
     up = Unpacker(data)
-    rxid = up.unpack_uint()
+    up.unpack_uint()
     _ = up.unpack_uint()
     _ = up.unpack_uint()  # reply, accepted
     _ = up.unpack_uint()
