@@ -194,7 +194,6 @@ devices:
 		self.assertAlmostEqual(temp, 25.5, places=2)
 
 	def test_modbus_ascii_voltage_read(self) -> None:
-		from vxi11 import vxi11 as vxi11_proto
 
 		client = self._open_client()
 		try:

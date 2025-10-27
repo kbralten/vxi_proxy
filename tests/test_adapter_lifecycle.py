@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import types
 import unittest
@@ -37,21 +38,51 @@ class _BadSerial:
 class AdapterLifecycleTests(unittest.TestCase):
     def setUp(self) -> None:
         # Default to the good fake serial
-        fake_serial_mod = types.SimpleNamespace(Serial=_FakeSerial)
-        sys.modules["serial"] = fake_serial_mod  # type: ignore
+        self._fake_serial_mod = types.SimpleNamespace(Serial=_FakeSerial)
+        self._original_sys_serial = sys.modules.get("serial")
+        sys.modules["serial"] = self._fake_serial_mod  # type: ignore
+
+        from vxi_proxy.adapters import scpi_serial  # type: ignore
+
+        self._original_adapter_serial = getattr(scpi_serial, "serial", None)
+        scpi_serial.serial = self._fake_serial_mod  # type: ignore
 
         from vxi_proxy.adapters.scpi_serial import ScpiSerialAdapter  # type: ignore
 
         self.Adapter = ScpiSerialAdapter
+        # Create a dedicated event loop for each test to work across Python versions
+        try:
+            self._previous_loop = asyncio.get_event_loop()
+        except RuntimeError:
+            self._previous_loop = None
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
 
     def tearDown(self) -> None:
-        sys.modules.pop("serial", None)
+        if self._original_adapter_serial is not None:
+            from vxi_proxy.adapters import scpi_serial  # type: ignore
+
+            scpi_serial.serial = self._original_adapter_serial  # type: ignore
+        else:
+            from vxi_proxy.adapters import scpi_serial  # type: ignore
+
+            scpi_serial.serial = None  # type: ignore
+
+        if self._original_sys_serial is not None:
+            sys.modules["serial"] = self._original_sys_serial
+        else:
+            sys.modules.pop("serial", None)
+        try:
+            self._loop.close()
+        finally:
+            if self._previous_loop is not None:
+                asyncio.set_event_loop(self._previous_loop)
+            else:
+                asyncio.set_event_loop(None)
 
     def test_acquire_opens_and_release_closes(self) -> None:
         adapter = self.Adapter("lifecycle0", port="COM7")
-        import asyncio
-
-        loop = asyncio.get_event_loop()
+        loop = self._loop
         # Initially no serial object
         self.assertIsNone(getattr(adapter, "_ser", None))
 
@@ -72,9 +103,7 @@ class AdapterLifecycleTests(unittest.TestCase):
 
     def test_release_idempotent(self) -> None:
         adapter = self.Adapter("lifecycle1", port="COM8")
-        import asyncio
-
-        loop = asyncio.get_event_loop()
+        loop = self._loop
         loop.run_until_complete(adapter.acquire())
         # First release
         adapter.release()
@@ -92,9 +121,7 @@ class AdapterLifecycleTests(unittest.TestCase):
         from vxi_proxy.adapters.scpi_serial import ScpiSerialAdapter  # type: ignore
 
         adapter = ScpiSerialAdapter("lifecycle_bad", port="COM9")
-        import asyncio
-
-        loop = asyncio.get_event_loop()
+        loop = self._loop
         try:
             with self.assertRaises(AdapterError):
                 loop.run_until_complete(adapter.acquire())

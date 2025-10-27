@@ -38,7 +38,6 @@ import os
 import random
 import sys
 import time
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -191,7 +190,7 @@ class MockScpiInstrument:
         """Main loop: read commands and send responses."""
         self.running = True
         print(f"\n{'='*60}")
-        print(f"Mock SCPI Instrument Running")
+        print("Mock SCPI Instrument Running")
         print(f"{'='*60}")
         print(f"Manufacturer: {self.manufacturer}")
         print(f"Model:        {self.model}")

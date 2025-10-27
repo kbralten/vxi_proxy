@@ -20,10 +20,8 @@ from __future__ import annotations
 import os
 import platform
 import shutil
-import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import unittest
@@ -113,7 +111,7 @@ class RealScpiIntegrationTests(unittest.TestCase):
             self.port_server = pty_b
 
         # Start the real mock_scpi_instrument.py on the mock side
-        mock_script = PROJECT_ROOT / "tools" / "mock_scpi_instrument.py"
+        PROJECT_ROOT / "tools" / "mock_scpi_instrument.py"
         def tearDown(self) -> None:
             # Stop the server facade if running
             if self.facade:

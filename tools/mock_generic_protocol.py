@@ -60,7 +60,6 @@ async def run_server(args: argparse.Namespace) -> None:
     server = await asyncio.start_server(
         lambda r, w: handle_client(r, w, args), args.host, args.port
     )
-    host = args.host or "0.0.0.0"
     addrs = ", ".join(str(sock.getsockname()) for sock in server.sockets or [])
     LOG.info("Mock generic protocol server listening on %s", addrs)
 

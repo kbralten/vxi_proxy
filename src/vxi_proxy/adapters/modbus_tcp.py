@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import socket
 import struct
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from .base import AdapterError, DeviceAdapter
 from ..mapping_engine import (
@@ -23,7 +23,6 @@ from ..mapping_engine import (
     FC_READ_INPUT_REGISTERS,
     FC_WRITE_SINGLE_COIL,
     FC_WRITE_SINGLE_REGISTER,
-    FC_WRITE_MULTIPLE_COILS,
     FC_WRITE_MULTIPLE_REGISTERS,
 )
 

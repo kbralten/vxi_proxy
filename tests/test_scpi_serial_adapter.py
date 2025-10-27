@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import types
 import unittest
@@ -57,16 +58,45 @@ class _FakeSerial:
 class ScpiSerialAdapterTests(unittest.TestCase):
     def setUp(self) -> None:
         # Patch the 'serial' module with our fake
-        fake_serial_mod = types.SimpleNamespace(Serial=_FakeSerial)
-        sys.modules["serial"] = fake_serial_mod  # type: ignore
+        self._fake_serial_mod = types.SimpleNamespace(Serial=_FakeSerial)
+        self._original_sys_serial = sys.modules.get("serial")
+        sys.modules["serial"] = self._fake_serial_mod  # type: ignore
+
+        from vxi_proxy.adapters import scpi_serial  # type: ignore
+
+        self._original_adapter_serial = getattr(scpi_serial, "serial", None)
+        scpi_serial.serial = self._fake_serial_mod  # type: ignore
 
         from vxi_proxy.adapters.scpi_serial import ScpiSerialAdapter  # type: ignore
 
         self.Adapter = ScpiSerialAdapter
+        try:
+            self._previous_loop = asyncio.get_event_loop()
+        except RuntimeError:
+            self._previous_loop = None
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
 
     def tearDown(self) -> None:
         # Clean up the serial patch
-        sys.modules.pop("serial", None)
+        from vxi_proxy.adapters import scpi_serial  # type: ignore
+
+        if self._original_adapter_serial is not None:
+            scpi_serial.serial = self._original_adapter_serial  # type: ignore
+        else:
+            scpi_serial.serial = None  # type: ignore
+
+        if self._original_sys_serial is not None:
+            sys.modules["serial"] = self._original_sys_serial
+        else:
+            sys.modules.pop("serial", None)
+        try:
+            self._loop.close()
+        finally:
+            if self._previous_loop is not None:
+                asyncio.set_event_loop(self._previous_loop)
+            else:
+                asyncio.set_event_loop(None)
 
     def test_requires_lock_and_connect_disconnect(self) -> None:
         adapter = self.Adapter("scpi0", port="COM3")
@@ -76,12 +106,10 @@ class ScpiSerialAdapterTests(unittest.TestCase):
 
         self.assertIsNone(getattr(adapter, "_ser", None))
         # connect
-        import asyncio
-
-        asyncio.get_event_loop().run_until_complete(adapter.connect())
+        self._loop.run_until_complete(adapter.connect())
         self.assertIsInstance(getattr(adapter, "_ser", None), serial.Serial)
         # disconnect
-        asyncio.get_event_loop().run_until_complete(adapter.disconnect())
+        self._loop.run_until_complete(adapter.disconnect())
         self.assertIsNone(getattr(adapter, "_ser", None))
 
     def test_write_appends_termination_and_read_until_termination(self) -> None:
@@ -92,9 +120,7 @@ class ScpiSerialAdapterTests(unittest.TestCase):
             write_termination="\n",
             read_termination="\n",
         )
-        import asyncio
-
-        loop = asyncio.get_event_loop()
+        loop = self._loop
         loop.run_until_complete(adapter.connect())
 
         # Prime RX buffer with a response terminated by \n
@@ -115,9 +141,7 @@ class ScpiSerialAdapterTests(unittest.TestCase):
 
     def test_write_does_not_duplicate_termination(self) -> None:
         adapter = self.Adapter("scpi2", port="COM5", write_termination="CRLF")
-        import asyncio
-
-        loop = asyncio.get_event_loop()
+        loop = self._loop
         loop.run_until_complete(adapter.connect())
         ser = getattr(adapter, "_ser")
         assert ser is not None

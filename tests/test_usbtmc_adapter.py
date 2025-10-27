@@ -6,7 +6,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
-from typing import Any, Deque
+from typing import Deque
 from collections import deque
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
