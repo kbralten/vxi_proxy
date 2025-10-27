@@ -98,11 +98,9 @@ def main() -> int:
 
     # Start facade if available
     facade = None
-    server_port: int = 1024
     portmapper_enabled: bool = False
     try:
         cfg = load_config(config_path)
-        server_port = int(getattr(cfg.server, "port", 1024) or 1024)
         portmapper_enabled = bool(getattr(cfg.server, "portmapper_enabled", False))
     except Exception:
         pass

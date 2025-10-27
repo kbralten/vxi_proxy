@@ -279,7 +279,8 @@ class PortMapperServer:
         if proc == PMAPPROC_GETPORT:
             # mapping: prog, vers, prot, port
             m_prog = up.unpack_uint()
-            m_vers = up.unpack_uint()
+            # skip vers
+            up.unpack_uint()
             m_prot = up.unpack_uint()
             _m_port = up.unpack_uint()
             # Only CORE and ASYNC return a TCP port; INTR is not supported, return 0
