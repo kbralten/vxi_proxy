@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 import logging
 import struct
 from typing import Any, List, Optional
+import re
 
 from .base import AdapterError, DeviceAdapter
 from ..mapping_engine import (
@@ -124,6 +125,44 @@ class ModbusSerialAdapterBase(DeviceAdapter, ABC):
 			command = data.decode("ascii").strip()
 		except UnicodeDecodeError as exc:
 			raise AdapterError("Commands must be ASCII-encoded for MODBUS adapters") from exc
+
+		# Support static-response rules: if a mapping includes a 'response'
+		# string and its pattern matches, bypass I/O and return that response.
+		for rule in self._mappings:
+			try:
+				pattern = rule.get("pattern") if isinstance(rule, dict) else None
+				if not pattern:
+					continue
+				regex = re.compile(str(pattern), re.IGNORECASE)
+				m = regex.match(command)
+				if not m:
+					continue
+				resp = None
+				if isinstance(rule.get("response"), str) and rule.get("response"):
+					resp = rule.get("response")
+				else:
+					params = rule.get("params", {}) if isinstance(rule, dict) else {}
+					maybe = params.get("response") if isinstance(params, dict) else None
+					if isinstance(maybe, str) and maybe:
+						resp = maybe
+				if resp is not None:
+					def _sub_token(mm: re.Match[str]) -> str:
+						key = mm.group(1) or mm.group(2)
+						try:
+							if key.isdigit():
+								val = m.group(int(key))
+							else:
+								val = m.group(key)
+						except Exception:
+							val = ""
+						return "" if val is None else str(val)
+
+					token_re = re.compile(r"\$(\w+)|\$\{(\w+)\}")
+					self._read_buffer = token_re.sub(_sub_token, str(resp))
+					return len(data)
+			except re.error:
+				# Ignore invalid patterns here; mapping engine will handle errors
+				pass
 
 		try:
 			action = translate_command(command, self._mappings)

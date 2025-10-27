@@ -43,6 +43,9 @@ class _CompiledRule:
     # inferred widths for numeric groups from the response pattern (name -> width)
     group_widths: dict[str, int]
     payload_width: Optional[int]
+    # For static-response rules (no transport I/O), this template is used
+    # to render the response directly from the request's capture groups.
+    static_response_template: Optional[str] = None
 
 
 class GenericRegexAdapter(DeviceAdapter):
@@ -133,6 +136,22 @@ class GenericRegexAdapter(DeviceAdapter):
             raise AdapterError("Empty command received")
 
         rule, match = self._match_rule(command)
+        # Static-response rule: skip I/O and buffer formatted response directly
+        if getattr(rule, "static_response_template", None):
+            formatted = self._render_template(
+                rule.static_response_template or "",
+                match,
+                rule.response_tokens,
+                rule,
+                is_request=False,
+            )
+            self._read_buffer = formatted
+            LOG.debug(
+                "generic_regex.write: static rule matched command=%r -> response=%r",
+                command,
+                formatted,
+            )
+            return len(data)
         request_text = self._render_template(
             rule.request_template, match, rule.request_tokens, rule, is_request=True
         )
@@ -185,12 +204,41 @@ class GenericRegexAdapter(DeviceAdapter):
                 raise AdapterError(f"Rule #{idx} must be a mapping")
             pattern_text = rule.get("pattern")
             request_format = rule.get("request_format")
+            static_response = rule.get("response")
             expects_response = bool(rule.get("expects_response", False))
             response_regex = rule.get("response_regex")
             response_format = rule.get("response_format")
 
             if not isinstance(pattern_text, str) or not pattern_text:
                 raise AdapterError(f"Rule #{idx} missing 'pattern'")
+
+            # Support simple static-response rules with only 'pattern' and 'response'.
+            if isinstance(static_response, str) and static_response and not request_format:
+                try:
+                    pattern = re.compile(pattern_text)
+                except re.error as exc:
+                    raise AdapterError(f"Rule #{idx} has invalid pattern: {exc}") from exc
+                response_tokens = self._extract_tokens(static_response)
+                compiled.append(
+                    _CompiledRule(
+                        pattern_text=pattern_text,
+                        pattern=pattern,
+                        request_template="",
+                        expects_response=True,
+                        response_pattern_text=None,
+                        response_pattern=None,
+                        response_template=static_response,
+                        static_response_template=static_response,
+                        request_tokens=tuple(),
+                        response_tokens=response_tokens,
+                        terminator=None,
+                        scale=None,
+                        response_scale=None,
+                        group_widths={},
+                        payload_width=None,
+                    )
+                )
+                continue
             if not isinstance(request_format, str) or not request_format:
                 raise AdapterError(f"Rule #{idx} missing 'request_format'")
 
@@ -306,6 +354,7 @@ class GenericRegexAdapter(DeviceAdapter):
                     response_pattern_text=response_regex if isinstance(response_regex, str) else None,
                     response_pattern=response_pattern_obj,
                     response_template=response_format,
+                    static_response_template=None,
                     terminator=terminator_val,
                     request_tokens=request_tokens,
                     response_tokens=response_tokens,

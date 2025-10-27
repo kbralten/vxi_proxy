@@ -329,6 +329,7 @@ function appendMappingRow(rule) {
     editor.appendChild(makeLabeledInput("Request", "regex-request-format", rule.request_format ?? ""));
     editor.appendChild(makeLabeledInput("Resp Regex", "regex-response-regex", rule.response_regex ?? ""));
     editor.appendChild(makeLabeledInput("Resp Format", "regex-response-format", rule.response_format ?? ""));
+    editor.appendChild(makeLabeledInput("Static Response", "regex-response-static", rule.response ?? ""));
     actionCell.replaceChildren(editor);
   }
   const paramsContainer = row.querySelector(".param-list");
@@ -348,6 +349,7 @@ function appendMappingRow(rule) {
       "request_format",
       "response_regex",
       "response_format",
+      "response",
       "payload_width",
       "expects_response",
       "scale",
@@ -666,10 +668,12 @@ function syncMappingsFromDom() {
       const req = row.querySelector(".regex-request-format");
       const respRegex = row.querySelector(".regex-response-regex");
       const respFmt = row.querySelector(".regex-response-format");
+      const respStatic = row.querySelector(".regex-response-static");
       const rule = { pattern: patternInput.value };
       if (req) rule["request_format"] = req.value;
       if (respRegex) rule["response_regex"] = respRegex.value;
       if (respFmt) rule["response_format"] = respFmt.value;
+      if (respStatic && respStatic.value !== "") rule["response"] = respStatic.value;
       row.querySelectorAll(".regex-options .regex-opt").forEach((el) => {
         const key = el.dataset.key;
         if (!key) return;
@@ -890,7 +894,10 @@ function validateConfig() {
       }
       const deviceType = (state.config.devices[deviceName]?.type || "").toLowerCase();
       if (deviceType.startsWith("modbus") && !rule.action) {
-        return `Mapping rule #${index + 1} for ${deviceName} must include an action`;
+        const hasStatic = !!(rule.params && typeof rule.params === "object" && typeof rule.params.response === "string" && rule.params.response.trim() !== "");
+        if (!hasStatic) {
+          return `Mapping rule #${index + 1} for ${deviceName} must include an action or a response`;
+        }
       }
     }
   }

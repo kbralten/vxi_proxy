@@ -10,6 +10,7 @@ import asyncio
 import socket
 import struct
 from typing import Any, List, Optional
+import re
 
 from .base import AdapterError, DeviceAdapter
 from ..mapping_engine import (
@@ -276,6 +277,48 @@ class ModbusTcpAdapter(DeviceAdapter):
         """
         try:
             command = data.decode("ascii").strip()
+            # First, support static-response rules: if a mapping rule includes a
+            # 'response' (either top-level or inside params), and its pattern
+            # matches, bypass transport I/O and return the formatted response.
+            for rule in self._mappings:
+                try:
+                    pattern = rule.get("pattern") if isinstance(rule, dict) else None
+                    if not pattern:
+                        continue
+                    regex = re.compile(str(pattern), re.IGNORECASE)
+                    m = regex.match(command)
+                    if not m:
+                        continue
+                    # Prefer top-level 'response', but also allow params['response']
+                    resp = None
+                    if isinstance(rule.get("response"), str) and rule.get("response"):
+                        resp = rule.get("response")
+                    else:
+                        params = rule.get("params", {}) if isinstance(rule, dict) else {}
+                        maybe = params.get("response") if isinstance(params, dict) else None
+                        if isinstance(maybe, str) and maybe:
+                            resp = maybe
+                    if resp is None:
+                        continue
+                    # Simple token substitution supports $1..$N and ${name}
+                    def _sub_token(match: re.Match[str]) -> str:
+                        key = match.group(1) or match.group(2)
+                        try:
+                            if key.isdigit():
+                                val = m.group(int(key))
+                            else:
+                                val = m.group(key)
+                        except Exception:
+                            val = ""
+                        return "" if val is None else str(val)
+
+                    token_re = re.compile(r"\$(\w+)|\$\{(\w+)\}")
+                    formatted = token_re.sub(_sub_token, str(resp))
+                    self._read_buffer = formatted
+                    return len(data)
+                except re.error:
+                    # Ignore invalid user patterns here; translate_command will surface errors later
+                    continue
             
             # Translate command to MODBUS action
             action = translate_command(command, self._mappings)

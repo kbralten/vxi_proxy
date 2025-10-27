@@ -150,9 +150,18 @@ def parse_config_dict(raw: Mapping[str, Any]) -> Config:
             device_def = devices.get(device_name)
             device_type = device_def.type if device_def else ""
             if isinstance(device_type, str) and device_type.lower().startswith("modbus"):
-                if not isinstance(action, str) or not action:
+                # Allow either an action (normal MODBUS mapping) or a static response
+                has_action = isinstance(action, str) and bool(action)
+                # Support 'response' either as a top-level key or inside params
+                response_top = rule.get("response") if isinstance(rule, dict) else None
+                response_param = params.get("response") if isinstance(params, dict) else None
+                has_static = (
+                    (isinstance(response_top, str) and bool(response_top))
+                    or (isinstance(response_param, str) and bool(response_param))
+                )
+                if not (has_action or has_static):
                     raise ConfigurationError(
-                        f"Mapping rule #{idx} for {device_name!r} must include a non-empty 'action'"
+                        f"Mapping rule #{idx} for {device_name!r} must include an 'action' or a 'response'"
                     )
             if not isinstance(params, dict):
                 raise ConfigurationError(
