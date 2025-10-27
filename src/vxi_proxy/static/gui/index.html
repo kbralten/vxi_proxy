@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VXI Proxy Configuration</title>
+  <link rel="stylesheet" href="/static/styles.css?v=3" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>VXI Proxy Configuration</h1>
+    <div class="actions">
+      <button id="btn-save" class="primary" disabled>Save Changes</button>
+      <button id="btn-reload">Reload Service</button>
+      <span id="status" role="status" aria-live="polite"></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel" id="server-panel">
+      <h2>Server Settings</h2>
+      <div class="field-grid" id="server-fields">
+        <label for="server-host">Host</label>
+        <input id="server-host" name="server-host" type="text" />
+
+        <label for="server-port">Port</label>
+        <input id="server-port" name="server-port" type="number" min="0" />
+
+        <label for="server-portmapper">Portmapper Enabled</label>
+        <select id="server-portmapper" name="server-portmapper">
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+
+        <label for="gui-enabled">GUI Enabled</label>
+        <select id="gui-enabled" name="gui-enabled">
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+
+        <label for="gui-host">GUI Host</label>
+        <input id="gui-host" name="gui-host" type="text" />
+
+        <label for="gui-port">GUI Port</label>
+        <input id="gui-port" name="gui-port" type="number" min="0" />
+      </div>
+    </section>
+
+    <section class="panel" id="devices-panel">
+      <div class="panel-header">
+        <h2>Devices</h2>
+        <button id="btn-add-device">Add Device</button>
+      </div>
+      <div class="devices-layout">
+        <aside class="device-list" aria-label="Configured devices">
+          <ul id="device-list"></ul>
+        </aside>
+        <div class="device-editor" id="device-editor" hidden>
+          <h3 id="device-editor-title">Device Details</h3>
+          <div class="field-grid">
+            <label for="device-name">Name</label>
+            <input id="device-name" type="text" />
+
+            <label for="device-type">Type</label>
+            <select id="device-type">
+              <option value="scpi-tcp">SCPI TCP</option>
+              <option value="scpi-serial">SCPI Serial</option>
+              <option value="modbus-tcp">MODBUS TCP</option>
+              <option value="modbus-rtu">MODBUS RTU</option>
+              <option value="modbus-ascii">MODBUS ASCII</option>
+              <option value="generic-regex">Generic Regex</option>
+              <option value="loopback">Loopback</option>
+              <option value="usbtmc">USBTMC</option>
+            </select>
+          </div>
+
+          <h4>Parameters</h4>
+          <table class="kv-table" aria-label="Device parameters">
+            <thead>
+              <tr>
+                <th scope="col">Key</th>
+                <th scope="col">Value</th>
+                <th scope="col" class="actions-col"></th>
+              </tr>
+            </thead>
+            <tbody id="device-params"></tbody>
+          </table>
+          <button id="btn-add-param" class="subtle">Add Parameter</button>
+
+          <div class="editor-actions">
+            <button id="btn-delete-device" class="danger">Delete Device</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="mappings-panel">
+      <div class="panel-header">
+        <h2>Mappings</h2>
+        <div class="mapping-controls">
+          <span id="mapping-device-indicator" class="muted"></span>
+          <button id="btn-add-mapping" class="subtle">Add Rule</button>
+        </div>
+      </div>
+      <div class="mapping-editor" id="mapping-editor" hidden>
+        <table class="mapping-table" aria-label="Mapping rules">
+          <thead>
+            <tr>
+              <th scope="col">Pattern</th>
+              <th scope="col">Action</th>
+              <th scope="col">Parameters</th>
+              <th scope="col" class="actions-col"></th>
+            </tr>
+          </thead>
+          <tbody id="mapping-rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <template id="param-row-template">
+    <tr>
+      <td><input type="text" class="param-key" /></td>
+      <td><input type="text" class="param-value" /></td>
+      <td class="actions-col"><button type="button" class="icon-button" title="Remove">&times;</button></td>
+    </tr>
+  </template>
+
+  <template id="mapping-row-template">
+    <tr>
+      <td><input type="text" class="mapping-pattern" /></td>
+      <td>
+        <select class="mapping-action">
+          <option value="read_holding_registers">Read Holding Registers</option>
+          <option value="read_input_registers">Read Input Registers</option>
+          <option value="read_coils">Read Coils</option>
+          <option value="read_discrete_inputs">Read Discrete Inputs</option>
+          <option value="write_single_register">Write Single Register</option>
+          <option value="write_holding_registers">Write Multiple Registers</option>
+          <option value="write_single_coil">Write Single Coil</option>
+          <option value="write_multiple_coils">Write Multiple Coils</option>
+        </select>
+      </td>
+      <td>
+        <div class="param-list"></div>
+        <button type="button" class="subtle add-param">Add Param</button>
+      </td>
+      <td class="actions-col"><button type="button" class="icon-button remove-mapping" title="Remove">&times;</button></td>
+    </tr>
+  </template>
+
+  <template id="mapping-param-template">
+    <div class="param-chip">
+      <input type="text" class="chip-key" placeholder="key" />
+      <input type="text" class="chip-value" placeholder="value" />
+      <button type="button" class="icon-button" title="Remove">&times;</button>
+    </div>
+  </template>
+
+  <script type="module" src="/static/app.js?v=3"></script>
+</body>
+</html>

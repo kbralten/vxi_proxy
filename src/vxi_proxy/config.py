@@ -4,9 +4,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Mapping
+from typing import Any, Dict, List, Mapping, Optional
 
 import yaml
+
+
+@dataclass(slots=True)
+class GuiSettings:
+    """Configuration for the embedded configuration GUI."""
+
+    enabled: bool = True
+    host: str = "127.0.0.1"
+    port: int = 0
 
 
 @dataclass(slots=True)
@@ -16,6 +25,7 @@ class ServerSettings:
     host: str = "0.0.0.0"
     port: int = 0
     portmapper_enabled: bool = False
+    gui: GuiSettings = field(default_factory=GuiSettings)
 
 
 @dataclass(slots=True)
@@ -29,11 +39,17 @@ class DeviceDefinition:
 
 @dataclass(slots=True)
 class MappingRule:
-    """Mapping rule translating SCPI-like commands into backend operations."""
+    """Mapping rule translating SCPI-like commands into backend operations.
+
+    For MODBUS rules, ``action`` is required and ``params`` contains action parameters.
+    For regex-based rules, ``action`` is optional and additional, rule-specific keys are
+    preserved in ``extras`` to round-trip YAML faithfully.
+    """
 
     pattern: str
-    action: str
+    action: Optional[str] = None
     params: Mapping[str, Any] = field(default_factory=dict)
+    extras: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -64,19 +80,33 @@ def _load_yaml(path: Path) -> Dict[str, Any]:
     return data
 
 
-def load_config(path: Path) -> Config:
-    """Load and validate configuration from a YAML file."""
+def parse_config_dict(raw: Mapping[str, Any]) -> Config:
+    """Parse configuration from an in-memory mapping."""
 
-    raw = _load_yaml(path)
+    if not isinstance(raw, Mapping):
+        raise ConfigurationError("Configuration root must be a mapping")
 
     server_raw = raw.get("server", {})
     if not isinstance(server_raw, dict):
         raise ConfigurationError("server section must be a mapping")
 
+    gui_raw = server_raw.get("gui", {})
+    if gui_raw is None:
+        gui_raw = {}
+    if not isinstance(gui_raw, dict):
+        raise ConfigurationError("server.gui section must be a mapping")
+
+    gui = GuiSettings(
+        enabled=bool(gui_raw.get("enabled", True)),
+        host=str(gui_raw.get("host", "127.0.0.1")),
+        port=int(gui_raw.get("port", 0)),
+    )
+
     server = ServerSettings(
         host=str(server_raw.get("host", "0.0.0.0")),
         port=int(server_raw.get("port", 0)),
         portmapper_enabled=bool(server_raw.get("portmapper_enabled", False)),
+        gui=gui,
     )
 
     devices_raw = raw.get("devices", {})
@@ -116,17 +146,85 @@ def load_config(path: Path) -> Config:
                 raise ConfigurationError(
                     f"Mapping rule #{idx} for {device_name!r} must include a non-empty 'pattern'"
                 )
-            if not isinstance(action, str) or not action:
-                raise ConfigurationError(
-                    f"Mapping rule #{idx} for {device_name!r} must include a non-empty 'action'"
-                )
+            # Determine device type to validate requirements
+            device_def = devices.get(device_name)
+            device_type = device_def.type if device_def else ""
+            if isinstance(device_type, str) and device_type.lower().startswith("modbus"):
+                if not isinstance(action, str) or not action:
+                    raise ConfigurationError(
+                        f"Mapping rule #{idx} for {device_name!r} must include a non-empty 'action'"
+                    )
             if not isinstance(params, dict):
                 raise ConfigurationError(
                     f"Mapping rule #{idx} for {device_name!r} must supply params as a mapping"
                 )
+            extras = {k: v for k, v in rule.items() if k not in {"pattern", "action", "params"}}
             mapping_rules.append(
-                MappingRule(pattern=pattern, action=action, params=params)
+                MappingRule(pattern=pattern, action=action if isinstance(action, str) else None, params=params, extras=extras)
             )
         mappings[device_name] = mapping_rules
 
     return Config(server=server, devices=devices, mappings=mappings)
+
+
+def load_config(path: Path) -> Config:
+    """Load and validate configuration from a YAML file."""
+
+    raw = _load_yaml(path)
+    return parse_config_dict(raw)
+
+
+def config_to_dict(config: Config) -> Dict[str, Any]:
+    """Convert a Config instance back into a serialisable mapping."""
+
+    server_dict: Dict[str, Any] = {
+        "host": config.server.host,
+        "port": config.server.port,
+        "portmapper_enabled": config.server.portmapper_enabled,
+        "gui": {
+            "enabled": config.server.gui.enabled,
+            "host": config.server.gui.host,
+            "port": config.server.gui.port,
+        },
+    }
+
+    devices_dict: Dict[str, Dict[str, Any]] = {}
+    for name, definition in config.devices.items():
+        settings = dict(definition.settings)
+        entry = {"type": definition.type}
+        entry.update(settings)
+        devices_dict[name] = entry
+
+    mappings_dict: Dict[str, List[Dict[str, Any]]] = {}
+    for device_name, rules in config.mappings.items():
+        serialised_rules: List[Dict[str, Any]] = []
+        for rule in rules:
+            entry: Dict[str, Any] = {"pattern": rule.pattern}
+            if rule.action:
+                entry["action"] = rule.action
+            if rule.params:
+                entry["params"] = dict(rule.params)
+            # Preserve any additional keys for regex or extended mappings
+            if getattr(rule, "extras", None):
+                entry.update(dict(rule.extras))
+            serialised_rules.append(entry)
+        mappings_dict[device_name] = serialised_rules
+
+    return {
+        "server": server_dict,
+        "devices": devices_dict,
+        "mappings": mappings_dict,
+    }
+
+
+def save_config(path: Path, raw: Mapping[str, Any]) -> Config:
+    """Validate and write configuration data to disk.
+
+    Returns the parsed Config instance on success.
+    """
+
+    config = parse_config_dict(raw)
+    serialisable = config_to_dict(config)
+    with path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(serialisable, handle, sort_keys=False)
+    return config
