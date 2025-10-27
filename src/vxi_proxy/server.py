@@ -67,8 +67,12 @@ class AsyncRuntime:
         if not self._thread.is_alive():
             return
         self._loop.call_soon_threadsafe(self._loop.stop)
-        self._stopping.wait(timeout=5)
-        self._thread.join(timeout=5)
+        # Use shorter timeouts to improve shutdown responsiveness when
+        # receiving Ctrl-C or SIGTERM. If the event loop takes longer,
+        # resources will still be cleaned up, but the process will not
+        # appear to hang for many seconds.
+        self._stopping.wait(timeout=1)
+        self._thread.join(timeout=1)
         if not self._loop.is_closed():
             self._loop.close()
 
@@ -632,6 +636,15 @@ def run_from_cli(config_path: Path) -> None:
         LOGGER.info("Received signal %s, shutting down", signum)
         facade.stop()
 
+    # Handle both SIGTERM and SIGINT (Ctrl-C) so shutdown is invoked
+    # promptly regardless of how the user or orchestrator stops the process.
     signal.signal(signal.SIGTERM, _handle_shutdown)
+    try:
+        signal.signal(signal.SIGINT, _handle_shutdown)
+    except Exception:
+        # Some environments (e.g., certain restricted containers) may
+        # not allow setting SIGINT; ignore failures and rely on
+        # KeyboardInterrupt handling as a fallback.
+        pass
 
     facade.serve_forever()

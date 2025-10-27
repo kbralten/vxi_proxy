@@ -81,9 +81,10 @@ class ConfigGuiServer:
 			loop.stop()
 
 		loop.call_soon_threadsafe(_stop_loop)
+		# Use shorter timeouts to make shutdown responsive to Ctrl-C.
 		if self._thread is not None:
-			self._thread.join(timeout=5)
-		self._stopped.wait(timeout=5)
+			self._thread.join(timeout=1)
+		self._stopped.wait(timeout=1)
 
 	# ------------------------------------------------------------------
 	# Thread + event loop setup

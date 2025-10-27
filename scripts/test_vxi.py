@@ -32,7 +32,7 @@ def main():
 
                 # 3. Print the response
                 # .strip() is used to remove any trailing newline characters
-                print(f"\n--- Device Response ---")
+                print("\n--- Device Response ---")
                 print(response.strip())
                 print("-----------------------\n")
 
