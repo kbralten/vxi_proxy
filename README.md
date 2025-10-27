@@ -236,12 +236,23 @@ Environment variables supported by the entrypoint:
 - `DISABLE_FACADE` — set to `1` to run the GUI only and skip starting the facade.
 - `SERVER_HOST_OVERRIDE` — entrypoint will set `server.host` to this value in the config before starting the facade (default `0.0.0.0`).
 - `DISABLE_SERVER_HOST_OVERRIDE` — set to `1` to disable the automatic override of `server.host`.
+- `PORTMAPPER_ENABLED` — set to `1` to start a tiny user-space rpcbind/portmapper on port 111 that answers GETPORT for VXI‑11 programs and returns the configured `server.port`.
 
 Notes:
 
 - The entrypoint tries to import `Vxi11ServerFacade` from `vxi_proxy.server`. If your project exposes the facade under a different name/path, either update the entrypoint or run the container with `DISABLE_FACADE=1` and start the facade by other means.
 - The GUI is served from the container and will be reachable at `http://<host>:8080/` when you publish port 8080.
 - If your facade listens on a different port than the one configured in `config.yaml`, publish that port when running the container (for example `-p 1024:1024`).
+- If you enable the portmapper, publish 111/tcp and 111/udp as well: `-p 111:111 -p 111:111/udp`.
+
+Minimal portmapper (optional)
+-----------------------------
+
+When `PORTMAPPER_ENABLED=1` or `server.portmapper_enabled: true` in `config.yaml`, the container starts a very small portmapper that implements PMAPPROC_NULL and PMAPPROC_GETPORT for the VXI‑11 programs (DEVICE_CORE/ASYNC/INTR) and returns the configured `server.port` for TCP.
+
+Notes:
+- This is not a full rpcbind replacement; it only answers GETPORT for VXI‑11.
+- It listens on both TCP and UDP 111.
 
 7\. License
 -----------

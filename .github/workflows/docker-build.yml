@@ -52,3 +52,28 @@ jobs:
         if: always()
         run: |
           echo "Built image tags: vxi-proxy:gui and ghcr.io/${{ github.repository_owner }}/vxi-proxy:gui-${{ github.sha }}"
+
+      - name: Build test image (local load)
+        run: |
+          docker build -t vxi-proxy:ci-test .
+
+      - name: Run container with portmapper enabled
+        run: |
+          docker rm -f vxi-ci || true
+          docker run -d --name vxi-ci -e PORTMAPPER_ENABLED=1 vxi-proxy:ci-test
+          # Give it a moment to start
+          sleep 2
+
+      - name: Run CI portmapper probe
+        run: |
+          docker exec vxi-ci python /app/scripts/ci_probe.py
+
+      - name: Container logs (on failure)
+        if: failure()
+        run: |
+          docker logs vxi-ci || true
+
+      - name: Cleanup container
+        if: always()
+        run: |
+          docker rm -f vxi-ci || true
