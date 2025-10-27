@@ -185,7 +185,7 @@ class ScpiSerialIntegrationTests(unittest.TestCase):
         err = res[0]
         lid = res[1]
         # max_recv may be available at index 3
-        max_recv = res[3] if len(res) > 3 else None
+        res[3] if len(res) > 3 else None
         self.assertEqual(err, vxi11_proto.ERR_NO_ERROR)
         self.assertGreater(lid, 0)
 

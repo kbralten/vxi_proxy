@@ -264,7 +264,7 @@ class Vxi11CoreServer(rpc.TCPServer):
         except KeyError:
             LOGGER.warning("Unknown device %s requested", device_name)
             error = vxi11_proto.ERR_DEVICE_NOT_ACCESSIBLE
-        except AdapterError as exc:
+        except AdapterError:
             LOGGER.exception("Adapter creation failed for %s", device_name)
             error = vxi11_proto.ERR_OUT_OF_RESOURCES
         except Exception:  # pragma: no cover - defensive guard

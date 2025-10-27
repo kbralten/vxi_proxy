@@ -14,7 +14,6 @@ import tempfile
 import threading
 import time
 import subprocess
-import os
 import unittest
 from pathlib import Path
 

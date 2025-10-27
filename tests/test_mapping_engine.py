@@ -12,12 +12,10 @@ if str(SRC_DIR) not in sys.path:
 
 from vxi_proxy.mapping_engine import (
     MappingError,
-    ModbusAction,
     decode_registers,
     encode_value,
     translate_command,
     FC_READ_HOLDING_REGISTERS,
-    FC_READ_INPUT_REGISTERS,
     FC_WRITE_SINGLE_REGISTER,
     FC_WRITE_MULTIPLE_REGISTERS,
 )

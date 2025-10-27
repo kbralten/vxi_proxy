@@ -85,7 +85,7 @@ class FakeModbusSocket:
             return response[:7]
         else:
             # Return PDU portion
-            pdu_length = len(response) - 7
+            len(response) - 7
             return response[7:7+size]
     
     def push_response(self, data: bytes):

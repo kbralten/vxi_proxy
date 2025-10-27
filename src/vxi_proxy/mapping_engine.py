@@ -10,7 +10,7 @@ import re
 import struct
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 
 class MappingError(Exception):
@@ -234,7 +234,7 @@ def translate_command(command: str, rules: List[Dict[str, Any]]) -> ModbusAction
         if function_code in (FC_WRITE_SINGLE_COIL, FC_WRITE_SINGLE_REGISTER, FC_WRITE_MULTIPLE_REGISTERS):
             value_template = params.get("value")
             if value_template is None:
-                raise MappingError(f"Write action missing 'value' in params")
+                raise MappingError("Write action missing 'value' in params")
             
             # Substitute captured groups ($1, $2, etc.)
             value_str = str(value_template)

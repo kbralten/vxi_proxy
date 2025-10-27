@@ -156,7 +156,7 @@ class ScpiTcpAdapter(DeviceAdapter):
                 sock.sendall(payload)
                 _LOG.debug("scpi_tcp.write: host=%s port=%s bytes=%s payload=%r", self._host, self._port, len(payload), payload)
                 return len(payload)
-            except Exception as exc:
+            except Exception:
                 # Close underlying socket on errors
                 try:
                     sock.close()
