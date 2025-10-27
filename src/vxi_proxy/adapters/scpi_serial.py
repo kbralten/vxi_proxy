@@ -65,6 +65,9 @@ class ScpiSerialAdapter(DeviceAdapter):
       - timeout (float seconds, default 1.0)
       - write_termination (str, e.g. "\n" or "CRLF"; optional)
       - read_termination (str, e.g. "\n" or "CRLF"; optional)
+            - inter_byte_timeout (float seconds, optional): when no read_termination
+                is configured, this helps return promptly after a short gap between
+                bytes rather than waiting for the full device timeout.
     """
 
     def __init__(self, name: str, **settings: object) -> None:
@@ -113,6 +116,17 @@ class ScpiSerialAdapter(DeviceAdapter):
         rt = settings.get("read_termination")
         self._write_term = _parse_termination(cast(Optional[str], wt) if isinstance(wt, str) else None)
         self._read_term = _parse_termination(cast(Optional[str], rt) if isinstance(rt, str) else None)
+        # Optional inter-byte timeout to avoid long waits when devices do not
+        # emit a terminator or send very short bursts. If unspecified, leave
+        # it as None so pyserial defaults apply. Users can set a small value
+        # like 0.02 for very snappy reads.
+        # Default to a small inter-byte timeout for low-latency reads; users can
+        # override by specifying inter_byte_timeout explicitly.
+        ibt_raw = settings.get("inter_byte_timeout", 0.02)
+        try:
+            self._inter_byte_timeout = float(cast(Any, ibt_raw)) if ibt_raw is not None else None
+        except Exception as exc:
+            raise AdapterError("inter_byte_timeout must be a number") from exc
 
     async def connect(self) -> None:
         # Allow eager open for convenience (tests and some workflows expect
@@ -158,6 +172,7 @@ class ScpiSerialAdapter(DeviceAdapter):
                 stopbits=self._stopbits,
                 timeout=self._timeout,
                 write_timeout=self._timeout,
+                inter_byte_timeout=self._inter_byte_timeout,
                 xonxoff=bool(self._settings.get("xonxoff", False)),
                 rtscts=bool(self._settings.get("rtscts", False)),
                 dsrdtr=bool(self._settings.get("dsrdtr", False)),
@@ -205,6 +220,7 @@ class ScpiSerialAdapter(DeviceAdapter):
                 stopbits=self._stopbits,
                 timeout=self._timeout,
                 write_timeout=self._timeout,
+                inter_byte_timeout=self._inter_byte_timeout,
                 xonxoff=bool(self._settings.get("xonxoff", False)),
                 rtscts=bool(self._settings.get("rtscts", False)),
                 dsrdtr=bool(self._settings.get("dsrdtr", False)),
@@ -275,15 +291,22 @@ class ScpiSerialAdapter(DeviceAdapter):
             raise AdapterError("Serial port is not connected")
 
         term = self._read_term
-        target = max(1, request_size)
+        # To avoid waiting for a large request_size, prefer a modest chunking
+        # strategy and finish as soon as the terminator is observed. If no
+        # terminator is configured, return whatever we have when the port's
+        # timeout or inter-byte timeout elapses.
+        target = max(1, min(65536, request_size or 65536))
 
         def _do_read() -> bytes:
             buf = bytearray()
             while len(buf) < target:
                 # Read in small chunks to allow terminator detection
-                chunk = ser.read(max(1, min(1024, target - len(buf))))
+                # Read strictly 1 byte at a time to minimize latency; rely on
+                # inter_byte_timeout to terminate quickly when data stops.
+                chunk = ser.read(1)
                 if not chunk:
-                    break  # timeout or no data available
+                    # timeout or no data available; if we have any bytes, return them
+                    break
                 buf += chunk
                 if term and buf.endswith(term):
                     break

@@ -70,7 +70,9 @@ class GenericRegexAdapter(DeviceAdapter):
         default_requires_lock = False if transport == "tcp" else True
         self.requires_lock = bool(settings.get("requires_lock", default_requires_lock))
 
-        default_chunk = 1024 if transport == "tcp" else 16
+        # Prefer very small chunks for serial to minimize latency; TCP can
+        # remain larger because recv completes as soon as bytes are available.
+        default_chunk = 1024 if transport == "tcp" else 1
         self._recv_chunk_size = max(1, int(settings.get("recv_chunk_size", default_chunk)))
 
         # Transport-specific configuration
@@ -100,6 +102,16 @@ class GenericRegexAdapter(DeviceAdapter):
                 "timeout": self._io_timeout,
                 "write_timeout": self._io_timeout,
             }
+            # Allow users to optionally configure a short inter-byte timeout so
+            # reads return promptly after small bursts rather than waiting for
+            # the full 'timeout' when no explicit terminator is configured.
+            # Default to a small inter-byte timeout for low-latency reads
+            try:
+                ibt = settings.get("inter_byte_timeout", 0.02)
+                if ibt is not None:
+                    self._serial_settings["inter_byte_timeout"] = float(ibt)
+            except Exception as exc:
+                raise AdapterError("inter_byte_timeout must be numeric") from exc
             self._serial_handle: Any | None = None
 
         mappings = settings.get("mappings")
