@@ -25,6 +25,7 @@ if SRC.is_dir() and str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from vxi_proxy.config import config_to_dict, load_config, save_config, ConfigurationError
+from vxi_proxy.portmapper import PortMapperServer
 from vxi_proxy.gui_server import ConfigGuiServer
 
 
@@ -97,6 +98,14 @@ def main() -> int:
 
     # Start facade if available
     facade = None
+    server_port: int = 1024
+    portmapper_enabled: bool = False
+    try:
+        cfg = load_config(config_path)
+        server_port = int(getattr(cfg.server, "port", 1024) or 1024)
+        portmapper_enabled = bool(getattr(cfg.server, "portmapper_enabled", False))
+    except Exception:
+        pass
     if Facade is not None:
         try:
             try:
@@ -129,6 +138,16 @@ def main() -> int:
         if hasattr(facade, "_config"):
             facade._config = new_cfg
 
+    # Optionally start the minimal portmapper if enabled
+    pmap = None
+    if os.getenv("PORTMAPPER_ENABLED") == "1" or portmapper_enabled:
+        try:
+            pmap = PortMapperServer(host="0.0.0.0", port=111, vxi_port=None, config_path=config_path)
+            pmap.start()
+            print("[entrypoint] Portmapper started on :111 (TCP/UDP)")
+        except Exception as exc:
+            print(f"[entrypoint] Warning: failed to start portmapper: {exc}", file=sys.stderr)
+
     gui = ConfigGuiServer(config_path=config_path, host=gui_host, port=gui_port, reload_callback=reload_callback)
     runtime = gui.start()
     print(f"[entrypoint] GUI available at http://{runtime.host}:{runtime.port}/")
@@ -148,11 +167,15 @@ def main() -> int:
         try:
             gui.stop()
         finally:
-            if facade is not None and hasattr(facade, "stop"):
-                try:
-                    facade.stop()
-                except Exception:
-                    pass
+            try:
+                if pmap is not None:
+                    pmap.stop()
+            finally:
+                if facade is not None and hasattr(facade, "stop"):
+                    try:
+                        facade.stop()
+                    except Exception:
+                        pass
 
     return 0
 

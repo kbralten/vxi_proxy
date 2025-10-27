@@ -15,8 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src ./src
 COPY scripts ./scripts
 
-# Expose GUI and default facade port; adjust as needed via config.yaml
-EXPOSE 8080 1024
+# Expose GUI, default facade port, and rpcbind/portmapper (111)
+EXPOSE 8080 1024 111
 
 # Default environment; can be overridden at docker run
 ENV CONFIG_PATH=/app/config.yaml \

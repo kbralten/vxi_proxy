@@ -14,7 +14,9 @@ from vxi_proxy.server import run_from_cli  # type: ignore[import]
 
 
 def main() -> None:
-    config_path = PROJECT_ROOT / "config.example.yaml"
+    config_path = PROJECT_ROOT / "config.yaml"
+    if not config_path.exists():
+        config_path = PROJECT_ROOT / "config.example.yaml"
     run_from_cli(config_path)
 
 
