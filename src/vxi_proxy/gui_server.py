@@ -163,7 +163,8 @@ class ConfigGuiServer:
 		try:
 			await asyncio.to_thread(save_config, self._config_path, payload)
 		except ConfigurationError as exc:
-			raise web.HTTPBadRequest(text=str(exc)) from exc
+			_LOG.error("Failed to save configuration: %s", exc)
+			raise web.HTTPBadRequest(text="Invalid configuration data") from exc
 
 		return web.json_response({"status": "ok"})
 
