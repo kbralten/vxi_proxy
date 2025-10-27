@@ -176,7 +176,7 @@ class ConfigGuiServer:
 		try:
 			await loop.run_in_executor(None, self._reload_callback)
 		except ConfigurationError as exc:
-			raise web.HTTPBadRequest(text=str(exc)) from exc
+			raise web.HTTPBadRequest(text="Invalid configuration data") from exc
 		except Exception as exc:  # pragma: no cover - defensive logging
 			_LOG.exception("Configuration reload failed")
 			raise web.HTTPInternalServerError(text="Configuration reload failed") from exc
