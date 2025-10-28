@@ -117,7 +117,24 @@ def main() -> int:
         # Nothing else to do; return silently to indicate success
         return
 
-    gui = ConfigGuiServer(args.config, args.host, args.port, reload_callback=reload_callback)
+    def resource_state_callback() -> dict:
+        # Return a synchronous snapshot of resource ownership by using the
+        # facade's AsyncRuntime to run the ResourceManager.status() coroutine.
+        try:
+            if hasattr(facade, "_resources") and hasattr(facade, "_runtime"):
+                return facade._runtime.run(facade._resources.status())
+        except Exception:
+            # Best-effort: return empty mapping on failure
+            pass
+        return {}
+
+    gui = ConfigGuiServer(
+        args.config,
+        args.host,
+        args.port,
+        reload_callback=reload_callback,
+        resource_state_callback=resource_state_callback,
+    )
     try:
         runtime = gui.start()
     except Exception as exc:

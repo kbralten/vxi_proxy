@@ -35,11 +35,16 @@ class ConfigGuiServer:
 		host: str,
 		port: int,
 		reload_callback: Optional[Callable[[], None]] = None,
+		resource_state_callback: Optional[Callable[[], Dict[str, Any]]] = None,
 	) -> None:
 		self._config_path = config_path
 		self._host = host
 		self._port = port
 		self._reload_callback = reload_callback
+		# Optional synchronous callable that returns a mapping of device -> owner id
+		# (e.g. {"device_name": 3}). The callable will be executed in a
+		# thread to avoid blocking the event loop.
+		self._resource_state_callback = resource_state_callback
 
 		self._thread: Optional[threading.Thread] = None
 		self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -138,6 +143,9 @@ class ConfigGuiServer:
 		app.router.add_get("/api/config", self._handle_get_config)
 		app.router.add_post("/api/config", self._handle_update_config)
 		app.router.add_post("/api/reload", self._handle_reload)
+		# Admin endpoints (optional)
+		if self._resource_state_callback is not None:
+			app.router.add_get("/api/admin/locks", self._handle_get_locks)
 		if self._static_root.exists():
 			app.router.add_static("/static", self._static_root, show_index=False)
 
@@ -183,6 +191,21 @@ class ConfigGuiServer:
 			raise web.HTTPInternalServerError(text="Configuration reload failed") from exc
 
 		return web.json_response({"status": "ok"})
+
+	async def _handle_get_locks(self, _request: web.Request) -> web.Response:
+		if self._resource_state_callback is None:
+			raise web.HTTPNotFound(text="Resource state endpoint not enabled")
+
+		# Execute the provided synchronous callback in a thread so it can
+		# call facade runtime helpers without blocking the event loop.
+		try:
+			owners = await asyncio.to_thread(self._resource_state_callback)
+		except Exception as exc:  # pragma: no cover - surface errors to client
+			_LOG.exception("Failed to obtain resource state")
+			raise web.HTTPInternalServerError(text=str(exc)) from exc
+
+		# Ensure JSON-serialisable mapping
+		return web.json_response({"owners": owners})
 
 	# ------------------------------------------------------------------
 	# Helpers

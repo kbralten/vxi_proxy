@@ -116,6 +116,26 @@
         </table>
       </div>
     </section>
+
+    <section class="panel" id="admin-panel">
+      <div class="panel-header">
+        <h2>Admin</h2>
+        <div class="mapping-controls">
+          <button id="btn-refresh-locks" class="subtle">Refresh Locks</button>
+        </div>
+      </div>
+      <div class="admin-editor" id="admin-editor">
+        <table class="mapping-table" aria-label="Resource locks">
+          <thead>
+            <tr>
+              <th scope="col">Device</th>
+              <th scope="col">Owner LID</th>
+            </tr>
+          </thead>
+          <tbody id="admin-locks-rows"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
 
   <template id="param-row-template">

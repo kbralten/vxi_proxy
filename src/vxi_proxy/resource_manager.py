@@ -85,3 +85,13 @@ class ResourceManager:
             self._owners[device_id] = None
             if device_lock.locked():
                 device_lock.release()
+
+    async def status(self) -> Dict[str, Optional[int]]:
+        """Return a snapshot of lock ownership: device_id -> owner_id (or None).
+
+        This coroutine acquires the internal guard to provide a consistent
+        snapshot and is intended for debugging/admin purposes.
+        """
+        guard = await self._ensure_guard()
+        async with guard:
+            return dict(self._owners)

@@ -104,6 +104,46 @@ function bindStaticHandlers() {
   elements.guiPort.addEventListener("input", () =>
     updateGuiField("port", coerceNumber(elements.guiPort.value))
   );
+  // Admin handlers
+  const refreshBtn = document.getElementById("btn-refresh-locks");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", fetchLocks);
+  }
+}
+
+async function fetchLocks() {
+  try {
+    const resp = await fetch("/api/admin/locks");
+    if (!resp.ok) throw new Error(`Failed to fetch locks (${resp.status})`);
+    const data = await resp.json();
+    const owners = data.owners || {};
+    const tbody = document.getElementById("admin-locks-rows");
+    tbody.innerHTML = "";
+    const entries = Object.entries(owners).sort((a, b) => a[0].localeCompare(b[0]));
+    if (!entries.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 2;
+      td.className = "muted";
+      td.textContent = "No locks held";
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+      return;
+    }
+    for (const [device, owner] of entries) {
+      const tr = document.createElement("tr");
+      const tdDev = document.createElement("td");
+      tdDev.textContent = device;
+      const tdOwner = document.createElement("td");
+      tdOwner.textContent = owner === null ? "(none)" : String(owner);
+      tr.appendChild(tdDev);
+      tr.appendChild(tdOwner);
+      tbody.appendChild(tr);
+    }
+  } catch (err) {
+    console.error(err);
+    setStatus(err.message || "Failed to fetch locks", "error");
+  }
 }
 
 async function refreshConfig(showStatus = true) {
