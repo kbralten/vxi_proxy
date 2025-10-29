@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 import logging
 import struct
 from typing import Any, List, Optional
+import math
 import re
 
 from .base import AdapterError, DeviceAdapter
@@ -172,7 +173,24 @@ class ModbusSerialAdapterBase(DeviceAdapter, ABC):
 		result = await self._execute_action(action)
 
 		if action.function_code in (FC_READ_HOLDING_REGISTERS, FC_READ_INPUT_REGISTERS):
-			self._read_buffer = self._format_register_result(result)
+			# Apply optional response scaling (e.g., divide by 100 -> 2 decimals)
+			decimals: Optional[int] = None
+			if getattr(action, "response_scale", None):
+				scale = action.response_scale or 1.0
+				try:
+					# Determine decimal places if scale is a positive power of 10
+					if scale > 0:
+						log10 = math.log10(scale)
+						if abs(round(log10) - log10) < 1e-9:
+							decimals = int(round(log10))
+				except Exception:
+					decimals = None
+				try:
+					if isinstance(result, (int, float)):
+						result = float(result) / float(scale)
+				except Exception:
+					pass
+			self._read_buffer = self._format_register_result(result, decimals)
 		elif action.function_code in (FC_READ_COILS, FC_READ_DISCRETE_INPUTS):
 			self._read_buffer = str(result)
 		else:
@@ -289,10 +307,13 @@ class ModbusSerialAdapterBase(DeviceAdapter, ABC):
 
 		return "OK"
 
-	def _format_register_result(self, value: Any) -> str:
+	def _format_register_result(self, value: Any, decimals: Optional[int] = None) -> str:
 		if isinstance(value, bool):
 			return "1" if value else "0"
 		if isinstance(value, float):
+			if decimals is not None and 0 <= decimals <= 12:
+				fmt = f"{{:.{decimals}f}}"
+				return fmt.format(value)
 			return f"{value:.6f}"
 		return str(value)
 

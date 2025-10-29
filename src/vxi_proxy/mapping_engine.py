@@ -26,6 +26,8 @@ class ModbusAction:
     count: int = 1
     values: Optional[List[int]] = None  # For write operations (register values)
     data_type: str = "uint16"
+    # Optional scaling to apply to numeric responses (e.g., 100 for x100 -> float)
+    response_scale: Optional[float] = None
 
 
 # MODBUS function code constants
@@ -228,6 +230,15 @@ def translate_command(command: str, rules: List[Dict[str, Any]]) -> ModbusAction
         address = int(address)
         count = int(params.get("count", 1))
         data_type = str(params.get("data_type", "uint16"))
+        # Optional response scaling (prefer params, fall back to top-level for convenience)
+        raw_scale = params.get("response_scale") if isinstance(params, dict) else None
+        if raw_scale is None:
+            raw_scale = rule.get("response_scale")
+        response_scale: Optional[float]
+        try:
+            response_scale = float(raw_scale) if raw_scale is not None else None
+        except Exception:
+            response_scale = None
         
         # For write operations, extract value (may use regex capture groups)
         values: Optional[List[int]] = None
@@ -253,6 +264,20 @@ def translate_command(command: str, rules: List[Dict[str, Any]]) -> ModbusAction
                     value = float(value_str) if "." in value_str else int(value_str)
                 except ValueError as exc:
                     raise MappingError(f"Cannot parse value: {value_str!r}") from exc
+
+            # Optional input scaling for numeric writes (e.g., 12.34 V * 100 -> 1234)
+            raw_wscale = params.get("scale") if isinstance(params, dict) else None
+            if raw_wscale is None:
+                raw_wscale = rule.get("scale")
+            try:
+                wscale = float(raw_wscale) if raw_wscale is not None else None
+            except Exception:
+                wscale = None
+            if wscale is not None and isinstance(value, (int, float)):
+                try:
+                    value = int(round(float(value) * wscale))
+                except Exception:
+                    pass
             
             # Encode to register values
             values = encode_value(value, data_type)
@@ -267,6 +292,7 @@ def translate_command(command: str, rules: List[Dict[str, Any]]) -> ModbusAction
             count=count,
             values=values,
             data_type=data_type,
+            response_scale=response_scale,
         )
     
     # No rule matched

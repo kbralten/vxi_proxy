@@ -10,6 +10,7 @@ import asyncio
 import socket
 import struct
 from typing import Any, List, Optional
+import math
 import re
 
 from .base import AdapterError, DeviceAdapter
@@ -328,9 +329,29 @@ class ModbusTcpAdapter(DeviceAdapter):
             
             # Buffer ASCII response for query commands (reads)
             if action.function_code in (FC_READ_HOLDING_REGISTERS, FC_READ_INPUT_REGISTERS):
+                # Apply optional response scaling similar to serial adapter
+                decimals: Optional[int] = None
+                scale = getattr(action, "response_scale", None)
+                if scale:
+                    try:
+                        if scale > 0:
+                            log10 = math.log10(scale)
+                            if abs(round(log10) - log10) < 1e-9:
+                                decimals = int(round(log10))
+                    except Exception:
+                        decimals = None
+                    try:
+                        if isinstance(result, (int, float)):
+                            result = float(result) / float(scale)
+                    except Exception:
+                        pass
+
                 # Format result as ASCII string
                 if isinstance(result, float):
-                    response = f"{result:.6f}"
+                    if decimals is not None and 0 <= decimals <= 12:
+                        response = f"{result:.{decimals}f}"
+                    else:
+                        response = f"{result:.6f}"
                 else:
                     response = str(result)
                 self._read_buffer = response
