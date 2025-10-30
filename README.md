@@ -253,6 +253,7 @@ When `PORTMAPPER_ENABLED=1` or `server.portmapper_enabled: true` in `config.yaml
 Notes:
 - This is not a full rpcbind replacement; it only answers GETPORT for VXI‑11.
 - It listens on both TCP and UDP 111.
+- On Linux systems, it is preferred to use the `rpcbind` service if available, as it provides a complete implementation of the portmapper functionality.
 
 7\. License
 -----------
