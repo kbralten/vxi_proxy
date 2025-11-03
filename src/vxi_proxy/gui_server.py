@@ -202,7 +202,7 @@ class ConfigGuiServer:
 			owners = await asyncio.to_thread(self._resource_state_callback)
 		except Exception as exc:  # pragma: no cover - surface errors to client
 			_LOG.exception("Failed to obtain resource state")
-			raise web.HTTPInternalServerError(text=str(exc)) from exc
+			raise web.HTTPInternalServerError(text="Failed to obtain resource state.") from exc
 
 		# Ensure JSON-serialisable mapping
 		return web.json_response({"owners": owners})
