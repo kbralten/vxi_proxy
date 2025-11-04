@@ -23,11 +23,8 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-import argparse
 import logging
 import signal
-import sys
-from pathlib import Path
 from typing import Optional
 
 from vxi_proxy.portmapper import PortMapperServer
